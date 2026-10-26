@@ -126,4 +126,6 @@ export interface PluginViewBridge<Data = unknown> {
   send(action: unknown): Promise<unknown>;
   prompt(text: string): Promise<void>;
   setFullscreen(on: boolean): void;
+  /** An older Mirador has none. */
+  openFile?(path: string): void;
 }

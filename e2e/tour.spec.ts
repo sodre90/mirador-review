@@ -1,14 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { helpers, installThisPlugin, testHost } from "./mirador.ts";
 
-const { addWorkspace, callCanvasTool, signIn, startConversation, walkthroughView } = helpers;
+const { addWorkspace, callCanvasTool, signIn, startConversation, walkthroughView, workspaceCard } = helpers;
 const { TestHost, writeBunProgram } = testHost;
 
 const host = new TestHost({ fakePrograms: true });
 const ideaLog = join(host.root, "idea.log");
+const openedLog = join(host.root, "opened.log");
 
 const serviceBefore = `export function serve(request) {
   const user = authenticate(request);
@@ -43,6 +44,14 @@ function createUncommittedWork() {
   writeFileSync(join(host.projectDir, "build", "routes.js"), "export const routes = ['/serve'];\n");
 }
 
+/** Stand-ins for the system's opener, which note what they were given. */
+function writeFakeOpeners() {
+  for (const opener of ["open", "xdg-open"]) {
+    writeFileSync(join(host.fakeProgramsDir, opener), `#!/bin/sh\necho "${opener} $*" >> '${openedLog}'\n`);
+    chmodSync(join(host.fakeProgramsDir, opener), 0o755);
+  }
+}
+
 function writeFakeIdea() {
   writeBunProgram(host.fakeProgramsDir, "idea", join(import.meta.dirname, "fake-idea.ts"), { FAKE_IDEA_LOG: ideaLog });
 }
@@ -73,6 +82,7 @@ const logLines = (file: string) => (existsSync(file) ? readFileSync(file, "utf8"
 test.beforeAll(async () => {
   createUncommittedWork();
   writeFakeIdea();
+  writeFakeOpeners();
   installThisPlugin(host);
   await host.start();
 });
@@ -219,4 +229,21 @@ test("a tour walks through the code as it is, or through what the task changed w
     await page.keyboard.press("3");
     await expect(view.locator(".review-list .file-name")).toContainText(["windows.ts"]);
   });
+});
+
+test("a file path in a tour's text is a link that opens the file, as in the chat", async ({ page }) => {
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  mkdirSync(join(host.projectDir, "docs"), { recursive: true });
+  writeFileSync(join(host.projectDir, "docs", "routes.md"), "# Routes\n");
+  const summaryText = "The routes are listed in `docs/routes.md`, built by `npm run build`.";
+  const shown = await callCanvasTool(host, conversationId, "tour", { title: "Where routes are listed", folder: host.projectDir, summary: summaryText, flow: [{ title: "The list", at: "docs/routes.md:1", say: "One heading." }] });
+  expect(shown).toContain("Shown to the user");
+  const summary = walkthroughView(page).locator(".overview-story");
+  await expect(summary.locator("button.file-link", { hasText: "npm run build" })).toHaveCount(0);
+  await summary.getByRole("button", { name: "docs/routes.md", exact: true }).click();
+  await expect.poll(() => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "")).toContain(realpathSync.native(join(host.projectDir, "docs", "routes.md")));
 });

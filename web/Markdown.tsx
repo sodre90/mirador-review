@@ -3,11 +3,20 @@ import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 const COPY_OUTCOME_SHOWN_MS = 1_500;
+const OPEN_FILE_HINT = "Opens the file in the program the host's system uses for it, on the machine Mirador runs on.";
 const BLOCKED_IMAGE_HINT =
   "Opens the image in your browser. Mirador does not load images from other sites itself, so an agent cannot send them what it read; Settings → Conversations can change that.";
 
 /** The block's text as written: markdown ends a code block's last line with a line break the author did not write. */
 const codeIn = (block: HTMLPreElement | null) => (block?.textContent ?? "").replace(/\n$/, "");
+
+/** A path as Mirador's chat links one: absolute, or through a folder, to a file with an extension. */
+const looksLikeFilePath = (text: string) => /^(?:[a-zA-Z]:[\\/]|[\/\\]|[\w.-]+[\\/])\S*\.\w+$/.test(text);
+
+/** Opens a file as a file link in Mirador's chat does; a Mirador from before plugin views could open files has none. */
+const openFile = (window as unknown as { mirador?: { openFile?: (path: string) => void } }).mirador?.openFile;
+
+const InsideCodeBlock = createContext(false);
 
 function CodeBlock({ node: _node, ...props }: ComponentProps<"pre"> & ExtraProps) {
   const block = useRef<HTMLPreElement>(null);
@@ -27,7 +36,9 @@ function CodeBlock({ node: _node, ...props }: ComponentProps<"pre"> & ExtraProps
   };
   return (
     <div className="copyable-code">
-      <pre ref={block} {...props} />
+      <InsideCodeBlock.Provider value={true}>
+        <pre ref={block} {...props} />
+      </InsideCodeBlock.Provider>
       <button type="button" className={`code-copy ${label === "Copy" ? "" : "shown"}`} onClick={copy}>
         {label}
       </button>
@@ -73,7 +84,18 @@ function MarkdownImage({ node: _node, ...props }: ComponentProps<"img"> & ExtraP
   );
 }
 
-const markdownComponents: Components = { a: MarkdownLink, img: MarkdownImage, pre: CodeBlock };
+function MarkdownCode({ node: _node, children, ...props }: ComponentProps<"code"> & ExtraProps) {
+  const insideCodeBlock = useContext(InsideCodeBlock);
+  const text = typeof children === "string" ? children : "";
+  if (!openFile || insideCodeBlock || !looksLikeFilePath(text)) return <code {...props}>{children}</code>;
+  return (
+    <button type="button" className="file-link" data-hint={OPEN_FILE_HINT} onClick={() => openFile(text)}>
+      <code>{text}</code>
+    </button>
+  );
+}
+
+const markdownComponents: Components = { a: MarkdownLink, img: MarkdownImage, pre: CodeBlock, code: MarkdownCode };
 
 /** Parsing is the costly part, so a re-render with the same text reuses the last result. */
 export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
