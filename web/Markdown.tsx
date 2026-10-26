@@ -14,7 +14,7 @@ const codeIn = (block: HTMLPreElement | null) => (block?.textContent ?? "").repl
 const looksLikeFilePath = (text: string) => /^(?:[a-zA-Z]:[\\/]|[\/\\]|[\w.-]+[\\/])\S*\.\w+$/.test(text);
 
 /** Opens a file as a file link in Mirador's chat does; a Mirador from before plugin views could open files has none. */
-const openFile = (window as unknown as { mirador?: { openFile?: (path: string) => void } }).mirador?.openFile;
+const openFile = (globalThis as { mirador?: { openFile?: (path: string) => void } }).mirador?.openFile;
 
 const InsideCodeBlock = createContext(false);
 
