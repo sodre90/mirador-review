@@ -1,0 +1,43 @@
+/* Over Mirador's own stylesheet: the panel's colours, font and font scale as the bridge hands them over, and the page as the canvas body the review sits in. */
+:root {
+  --bg: var(--mirador-bg);
+  --panel: var(--mirador-panel);
+  --panel-2: var(--mirador-panel-2);
+  --border: var(--mirador-border);
+  --text: var(--mirador-text);
+  --muted: var(--mirador-muted);
+  --faint: var(--mirador-faint);
+  --accent: var(--mirador-accent);
+  --accent-text: var(--mirador-accent-text);
+  --accent-soft: var(--mirador-accent-soft);
+  --danger: var(--mirador-danger);
+  --ok: var(--mirador-ok);
+  --warn: var(--mirador-warn);
+  --code-bg: var(--mirador-code-bg);
+  --mono: var(--mirador-mono);
+  --font-scale: var(--mirador-font-scale);
+  --splitter-width: 7px;
+  font-family: var(--mirador-font);
+}
+
+html,
+body,
+#walkthrough {
+  height: 100%;
+}
+
+body {
+  background: var(--panel);
+  overflow: hidden;
+}
+
+#walkthrough {
+  display: flex;
+  flex-direction: column;
+}
+
+.walkthrough-problem {
+  margin: 0;
+  padding: 6px 14px;
+  color: var(--danger);
+}

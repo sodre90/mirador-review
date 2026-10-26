@@ -1,0 +1,29 @@
+{
+  "name": "review",
+  "title": "Code review",
+  "version": "1.0.0",
+  "api": 3,
+  "canvas": {
+    "host": "host.ts",
+    "view": "dist/view.js"
+  },
+  "settings": [
+    {
+      "id": "open-reviews",
+      "label": "Open reviews",
+      "hint": "Where a code review from the agent opens. Either way, the button in the review's bar switches between the two.",
+      "choices": [
+        {
+          "value": "fullscreen",
+          "label": "Full screen, over the chat"
+        },
+        {
+          "value": "beside",
+          "label": "In the canvas pane, beside the chat"
+        }
+      ],
+      "default": "fullscreen"
+    }
+  ],
+  "build": "bun install --frozen-lockfile && bun run build"
+}

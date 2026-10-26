@@ -1,0 +1,26 @@
+{
+  "name": "mirador-review",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build-view.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun run build && bun test tests",
+    "e2e": "scripts/e2e.sh"
+  },
+  "dependencies": {
+    "prismjs": "1.30.0",
+    "react": "19",
+    "react-dom": "19",
+    "react-markdown": "10",
+    "remark-gfm": "^4.0.1",
+    "zod": "4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/prismjs": "1.26.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}
