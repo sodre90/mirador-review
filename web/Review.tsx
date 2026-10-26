@@ -513,11 +513,28 @@ function GitHubCliHint({ problem, host, checking, onCheckAgain }: { problem: Git
 /** No finding or answer to post, now or later, and nothing posted yet to point to. */
 const hasNothingToPost = (review: Review) => review.findings.length === 0 && answersOf(review).length === 0 && !review.pendingReviewUrl;
 
+function PullRequestLink({ pullRequest }: { pullRequest: PullRequestRef }) {
+  return (
+    <a href={pullRequest.url} target="_blank" rel="noreferrer">
+      {pullRequest.owner}/{pullRequest.repo} pull {pullRequest.number}
+    </a>
+  );
+}
+
 function PostPanel({ item }: { item: ReviewItem }) {
   const { review } = item;
   const gitHubCli = useGitHubCliProblem(item.id, review.pullRequest !== null);
   const host = useWalkthroughHost();
-  if (!review.pullRequest || hasNothingToPost(review)) return null;
+  if (!review.pullRequest) return null;
+  if (hasNothingToPost(review)) {
+    return (
+      <section className="post-panel">
+        <h3>
+          Pull request <PullRequestLink pullRequest={review.pullRequest} />
+        </h3>
+      </section>
+    );
+  }
   const kept = review.findings.filter((finding) => finding.decision === "keep" && !finding.postedAs);
   const toPost = kept.filter((finding) => isCommentable(fileOf(review, finding.at.path), finding.at));
   const posted = review.findings.filter((finding) => finding.postedAs).length;
@@ -529,10 +546,7 @@ function PostPanel({ item }: { item: ReviewItem }) {
   return (
     <section className="post-panel">
       <h3>
-        Pull request{" "}
-        <a href={review.pullRequest.url} target="_blank" rel="noreferrer">
-          {review.pullRequest.owner}/{review.pullRequest.repo} pull {review.pullRequest.number}
-        </a>
+        Pull request <PullRequestLink pullRequest={review.pullRequest} />
       </h3>
       <p>
         Kept findings go to the pull request as comments on a pending review{answers.length > 0 && ", and kept answers as replies in their conversations"},
@@ -676,6 +690,12 @@ function Overview({
         <p className={`verdict ${verdictEdited ? "agent-edited" : ""}`}>{review.verdict}</p>
         <p className="review-stats">
           {changeCounts(review)} · {review.base} ({review.baseCommit.slice(0, 8)}) → {review.headCommit.slice(0, 8)}
+          {review.pullRequest && (
+            <>
+              {" · "}
+              <PullRequestLink pullRequest={review.pullRequest} />
+            </>
+          )}
         </p>
         <div className={summaryEdited ? "agent-edited" : ""}>
           <MarkdownText text={review.summary} />

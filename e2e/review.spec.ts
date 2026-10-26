@@ -738,7 +738,7 @@ test("a post that fails as a whole says why above Post on every page showing the
   await otherPage.close();
 });
 
-test("a review with nothing to comment on says so on its Findings tab, with no Post panel", async ({ page }) => {
+test("a review with nothing to comment on says so on its Findings tab, and links its pull request there and in the Overview", async ({ page }) => {
   await signIn(page, host);
   const addProject = page.getByRole("button", { name: "+ Add a project directory" });
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
@@ -749,8 +749,10 @@ test("a review with nothing to comment on says so on its Findings tab, with no P
   await expect(canvasPane(page).locator(".canvas-header .canvas-outcome")).toHaveText("Approve");
   await view.getByRole("tab", { name: /Findings/ }).click();
   await expect(view.locator(".findings-view")).toContainText("The agent found nothing to comment on.");
-  await expect(view.locator(".post-panel")).toHaveCount(0);
+  await expect(view.locator(".post-panel")).toHaveText("Pull request team/shop pull 7");
+  await expect(view.locator(".post-panel").getByRole("link", { name: "team/shop pull 7" })).toHaveAttribute("href", PULL_REQUEST);
+  await expect(view.getByRole("button", { name: /^Post/ })).toHaveCount(0);
   await view.getByRole("tab", { name: /Overview/ }).click();
   await expect(view.locator(".verdict")).toHaveText("Approve: a small, correct fix.");
-  await expect(view.locator(".post-panel")).toHaveCount(0);
+  await expect(view.locator(".review-stats").getByRole("link", { name: "team/shop pull 7" })).toHaveAttribute("href", PULL_REQUEST);
 });
