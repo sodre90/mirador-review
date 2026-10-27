@@ -80,7 +80,7 @@ const reviewEditSchema = z.object({
     .array(findingSchema.partial().extend({ id: z.string().min(1).describe('The finding to change, e.g. "finding-2".') }))
     .optional()
     .describe(
-      "Changes to findings: only the fields you pass change, and the user's keep or drop stays. The body the user asked you about is the one they see now, their own rewording included; a body you pass replaces it.",
+      "Changes to findings: only the fields you pass change, and the user's keep or drop stays. The body the user asked you about is the one they see now, their own rewording included; a body you pass replaces it. The author sees only the text as it stands, never an earlier version: write it whole, with no word of what it said before or what changed.",
     ),
   addFindings: z.array(findingSchema).optional().describe("New findings, added after the others."),
   removeFindings: z.array(z.string().min(1)).optional().describe('Findings to take out, by id, e.g. ["finding-3"].'),
@@ -88,7 +88,13 @@ const reviewEditSchema = z.object({
     .array(
       z.object({
         id: z.string().min(1).describe('The answer to change, e.g. "answer-1".'),
-        body: z.string().min(1).optional().describe("Markdown: the reply as it would be posted in the conversation."),
+        body: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            "Markdown: the reply as it would be posted in the conversation, replacing the earlier one. The author sees only the text as it stands, never an earlier version: write it whole, with no word of what it said before or what changed.",
+          ),
         resolve: z.boolean().optional().describe("Whether you suggest resolving the conversation with this answer."),
       }),
     )
@@ -334,7 +340,7 @@ export function codeReviews(gh: GitHubCli) {
 
   const updateReviewTool: CanvasTool<Review> = {
     description:
-      "Change parts of a review already on the canvas, in place: reword, move, add or take out findings, change answers, the tour, the summary or the verdict. Only what you pass changes; the user keeps their place in the review and their choices on everything else. Name findings and answers by the ids the review tool reported (finding-2, answer-1). Publish the whole review again with review only when the code under review changed.",
+      "Change parts of a review already on the canvas, in place: reword, move, add or take out findings, change answers, the tour, the summary or the verdict. Only what you pass changes; the user keeps their place in the review and their choices on everything else. Name findings and answers by the ids the review tool reported (finding-2, answer-1). Publish the whole review again with review only when the code under review changed. The author of the change never sees earlier versions of a finding or answer, so a new body stands on its own: never refer to what it said before, as in \"updated\", \"as noted earlier\" or \"on second look\".",
     input: z.toJSONSchema(reviewEditSchema, { io: "input" }),
     /** The edit is applied to the review as it is once git has been read, so a choice the user made meanwhile stays. */
     async run(input, context) {
