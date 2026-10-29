@@ -39,10 +39,10 @@ const setUp = (store?: Store, gh = NO_GH) => canvasPluginHost(pluginsFolderWithT
 const place = (tab: PlaceInWalkthrough["tab"]): PlaceInWalkthrough => ({ tab, stepIndex: 1, path: null, hunkIndex: 0, findingId: null, answerId: null, scrolled: {} });
 
 describe("the review plugin: tours", () => {
-  test("the tour tool is pre-allowed and offered up front, with its lines of guidance", async () => {
+  test("the tour tool is pre-allowed and loaded on demand, with its lines of guidance", async () => {
     const { plugins, mcpRequest } = await setUp();
     const { tools } = await mcpRequest("tools/list", {});
-    expect(tools.find(({ name }: { name: string }) => name === "tour")).toMatchObject({ _meta: { "anthropic/alwaysLoad": true } });
+    expect(tools.find(({ name }: { name: string }) => name === "tour")._meta?.["anthropic/alwaysLoad"]).toBeUndefined();
     expect(claudeSessionMeta("often", { canvasPlugins: plugins.guidance }).claudeCode.options.allowedTools).toContain("mcp__canvas__tour");
     expect(canvasInstructions("http://127.0.0.1:4601", plugins.guidance)).toContain("\n- tour: when you explain how code works,");
     expect(canvasUseGuidance(plugins.guidance)).toContain("\n- tour: explaining how code works,");
@@ -111,11 +111,11 @@ function savedReview(store: Store, review: Partial<Review>, id = "r1") {
 const reviewOf = (item: CanvasItem | undefined) => (item as PluginCanvasItem | undefined)?.data as Review | undefined;
 
 describe("the review plugin: reviews", () => {
-  test("review and update_review are pre-allowed and offered up front, with their lines of guidance after ask's", async () => {
+  test("review and update_review are pre-allowed and loaded on demand, with their lines of guidance after ask's", async () => {
     const { plugins, mcpRequest } = await setUp();
     const { tools } = await mcpRequest("tools/list", {});
     for (const name of ["review", "update_review"]) {
-      expect(tools.find((tool: { name: string }) => tool.name === name)).toMatchObject({ _meta: { "anthropic/alwaysLoad": true } });
+      expect(tools.find((tool: { name: string }) => tool.name === name)._meta?.["anthropic/alwaysLoad"]).toBeUndefined();
       expect(claudeSessionMeta("often", { canvasPlugins: plugins.guidance }).claudeCode.options.allowedTools).toContain(`mcp__canvas__${name}`);
     }
     expect(canvasInstructions("http://127.0.0.1:4601", plugins.guidance)).toContain(

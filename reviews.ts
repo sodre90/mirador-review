@@ -319,6 +319,7 @@ export function codeReviews(gh: GitHubCli) {
     description:
       "Publish a code review to the user's canvas as an interactive review: a summary, a guided tour of the code flow, the diff (taken from git, so do not paste code), and your findings on the lines they are about. The user can ask you about any lines, keep or drop findings, and post the kept ones to the pull request. When reviewing a pull request again, also answer its existing conversations (answers). Publishing the same change again keeps the user's choices on findings with the same file and title or lines, and on answers to the same conversation. Anchors and conversations are checked; if any are wrong, nothing is shown and the result lists them all. To change parts of a review already shown, use update_review instead.",
     input: z.toJSONSchema(reviewSchema, { io: "input" }),
+    onDemand: true,
     async run(input, context) {
       const request = input as ReviewRequest;
       const [snapshot, answers] = await allOrEveryProblem(snapshotReview(request), answersToConversations(request, gh));
@@ -342,6 +343,7 @@ export function codeReviews(gh: GitHubCli) {
     description:
       "Change parts of a review already on the canvas, in place: reword, move, add or take out findings, change answers, the tour, the summary or the verdict. Only what you pass changes; the user keeps their place in the review and their choices on everything else. Name findings and answers by the ids the review tool reported (finding-2, answer-1). Publish the whole review again with review only when the code under review changed. The author of the change never sees earlier versions of a finding or answer, so a new body stands on its own: never refer to what it said before, as in \"updated\", \"as noted earlier\" or \"on second look\".",
     input: z.toJSONSchema(reviewEditSchema, { io: "input" }),
+    onDemand: true,
     /** The edit is applied to the review as it is once git has been read, so a choice the user made meanwhile stays. */
     async run(input, context) {
       const edit = input as ReviewEdit & { review?: string };

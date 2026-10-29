@@ -1,7 +1,7 @@
 {
   "name": "review",
   "title": "Code review",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": 3,
   "canvas": {
     "host": "host.ts",

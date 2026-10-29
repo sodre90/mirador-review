@@ -63,6 +63,7 @@ const tourTool: CanvasTool<Tour> = {
   description:
     "Publish a guided tour of the code flow to the user's canvas: a summary, then steps in the order the code runs, each anchored to lines the page shows with the code around them (read from the files, so do not paste code). Use it to explain how code works, or with since to walk the user through what you changed: changed lines are marked and the diff gets a tab. The user can ask you about any lines. Anchors are checked; if any are wrong, nothing is shown and the result lists them all. To change a tour, publish it again.",
   input: z.toJSONSchema(tourSchema, { io: "input" }),
+  onDemand: true,
   async run(input, { publish }) {
     const request = input as z.infer<typeof tourSchema>;
     const tour = await snapshotTour(request);
