@@ -17,18 +17,24 @@ const flowStepSchema = z.object({
   say: z.string().min(1).describe("Markdown: what happens here and why it matters, in a few sentences."),
 });
 
+const findingShape = {
+  severity: z.enum(findingSeverities),
+  checked: z.enum(["confirmed", "plausible"]),
+  at: z.string().min(3),
+  title: z.string().min(1),
+  body: z.string().min(1),
+  evidence: z.string().optional(),
+};
+
 const findingSchema = z.object({
-  severity: z
-    .enum(findingSeverities)
-    .describe("blocker: must change before merging; issue: should change; question: needs the author's answer; nit: optional polish."),
-  checked: z.enum(["confirmed", "plausible"]).describe("confirmed: you verified it (ran, traced or tested it); plausible: suspected, not verified."),
+  severity: findingShape.severity.describe(
+    "blocker: must change before merging; issue: should change; question: needs the author's answer; nit: optional polish.",
+  ),
+  checked: findingShape.checked.describe("confirmed: you verified it (ran, traced or tested it); plausible: suspected, not verified."),
   at: anchorSchema("The line(s) the comment is about. GitHub accepts comments only on changed lines and the 3 lines around them."),
-  title: z.string().min(1).describe("A few words for the list of findings."),
-  body: z
-    .string()
-    .min(1)
-    .describe('Markdown: the comment as it would be posted on the pull request, addressed to the author. Write "finding 2", never a bare # and number.'),
-  evidence: z.string().optional().describe("Markdown: how you checked it, for the user only; not posted."),
+  title: findingShape.title.describe("A few words for the list of findings."),
+  body: findingShape.body.describe('Markdown: the comment as it would be posted on the pull request, addressed to the author. Write "finding 2", never a bare # and number.'),
+  evidence: findingShape.evidence.describe("Markdown: how you checked it, for the user only; not posted."),
 });
 
 const reviewSchema = z.object({
@@ -77,10 +83,10 @@ const reviewEditSchema = z.object({
   summary: z.string().min(1).optional().describe("A new summary."),
   flow: z.array(flowStepSchema).optional().describe("The whole tour again, in order, when any step of it changes: it replaces the tour."),
   findings: z
-    .array(findingSchema.partial().extend({ id: z.string().min(1).describe('The finding to change, e.g. "finding-2".') }))
+    .array(z.object(findingShape).partial().extend({ id: z.string().min(1).describe('The finding to change, e.g. "finding-2".') }))
     .optional()
     .describe(
-      "Changes to findings: only the fields you pass change, and the user's keep or drop stays. The body the user asked you about is the one they see now, their own rewording included; a body you pass replaces it. The author sees only the text as it stands, never an earlier version: write it whole, with no word of what it said before or what changed.",
+      "Changes to findings, with the fields of addFindings: only the fields you pass change, and the user's keep or drop stays. The body the user asked you about is the one they see now, their own rewording included; a body you pass replaces it.",
     ),
   addFindings: z.array(findingSchema).optional().describe("New findings, added after the others."),
   removeFindings: z.array(z.string().min(1)).optional().describe('Findings to take out, by id, e.g. ["finding-3"].'),
@@ -92,9 +98,7 @@ const reviewEditSchema = z.object({
           .string()
           .min(1)
           .optional()
-          .describe(
-            "Markdown: the reply as it would be posted in the conversation, replacing the earlier one. The author sees only the text as it stands, never an earlier version: write it whole, with no word of what it said before or what changed.",
-          ),
+          .describe("Markdown: the reply as it would be posted in the conversation, replacing the earlier one."),
         resolve: z.boolean().optional().describe("Whether you suggest resolving the conversation with this answer."),
       }),
     )

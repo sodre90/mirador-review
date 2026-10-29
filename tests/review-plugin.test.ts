@@ -111,6 +111,16 @@ function savedReview(store: Store, review: Partial<Review>, id = "r1") {
 const reviewOf = (item: CanvasItem | undefined) => (item as PluginCanvasItem | undefined)?.data as Review | undefined;
 
 describe("the review plugin: reviews", () => {
+  test("update_review describes a finding's fields once, in addFindings, and its rule on earlier versions once, in its description", async () => {
+    const { mcpRequest } = await setUp();
+    const { tools } = await mcpRequest("tools/list", {});
+    const updateReview = tools.find((tool: { name: string }) => tool.name === "update_review");
+    const { findings, addFindings } = updateReview.inputSchema.properties;
+    expect(addFindings.items.properties.severity.description).toStartWith("blocker: must change before merging");
+    expect(Object.entries(findings.items.properties).filter(([, field]) => (field as { description?: string }).description).map(([name]) => name)).toEqual(["id"]);
+    expect(JSON.stringify(updateReview).match(/never sees earlier versions|never an earlier version/g)).toHaveLength(1);
+  });
+
   test("review and update_review are pre-allowed and loaded on demand, with their lines of guidance after ask's", async () => {
     const { plugins, mcpRequest } = await setUp();
     const { tools } = await mcpRequest("tools/list", {});
