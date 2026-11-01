@@ -28,7 +28,7 @@ export const hints = {
   reviewFindNext: "Next match, further down and on into the next file (Enter)",
   reviewFindPrevious: "Previous match, further up (Shift+Enter)",
   reviewLineNumber:
-    "Click to select this line, Shift+click to select up to it. Then a asks the agent about the lines, o opens them in IntelliJ IDEA.",
+    "Click to select this line, Shift+click to select up to it. Then a asks the agent about the lines, o opens them in the editor Mirador's Settings choose.",
   reviewPlacement:
     "Show the review over the whole workspace, or in the canvas pane next to the chat. The code review plugin's setting in Settings picks where reviews open.",
   splitter: "Drag to resize, double-click to reset.",

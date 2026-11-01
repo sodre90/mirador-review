@@ -66,6 +66,11 @@ export interface CanvasPluginStorage {
 export interface CanvasActionContext<Data = unknown> extends CanvasPluginContext<Data> {
   /** Sends the agent a message, as if the user wrote it; `afterTurn` keeps it queued until the agent's turn ends. */
   prompt(text: string, options?: { afterTurn?: boolean }): Promise<void>;
+  /**
+   * Opens a file, by its absolute path, at a line in the editor Mirador's Settings name, on the host's computer.
+   * Mirador before its editor setting has none.
+   */
+  openInEditor?(file: string, line: number): void;
 }
 
 export interface CanvasToolContext<Data = unknown> extends CanvasPluginContext<Data> {
@@ -120,6 +125,8 @@ export interface PluginItemContext {
   fullscreen?: boolean;
   /** What Settings say text fields do as the user types. */
   typingAids?: { autocorrect: boolean; predictions: boolean };
+  /** The editor that context.openInEditor opens files in, by name; null when the host finds none, absent before Mirador's editor setting. */
+  opensIn?: string | null;
 }
 
 /** `window.mirador` in a plugin's canvas view, as its bridge makes it. */

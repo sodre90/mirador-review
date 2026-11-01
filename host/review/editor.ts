@@ -26,8 +26,6 @@ export function fileInCheckout(repository: string, file: string, line: number, {
   return inCheckout;
 }
 
-export const openInIdea = (repository: string, file: string, line: number) => launchIdea(fileInCheckout(repository, file, line), line);
-
 /** Opens an absolute path at a line in IntelliJ IDEA; the caller decides which files a page may open. */
 export function launchIdea(file: string, line: number) {
   const executable = Bun.which("idea", { PATH: currentPath() }) ?? Bun.which("idea", { PATH: IDEA_INSTALL_DIRECTORIES.join(delimiter) });

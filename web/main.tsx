@@ -9,7 +9,7 @@ import { DEFAULT_FLOW_BAND_SHARE, DEFAULT_REVIEW_LIST_SHARE } from "./pane-share
 import { WalkthroughView } from "./Review.tsx";
 import { isMac } from "./shortcuts.ts";
 import reviewStyles from "./review.css" with { type: "text" };
-import type { WalkthroughHost } from "./walkthrough-host.ts";
+import { openInLabel, type WalkthroughHost } from "./walkthrough-host.ts";
 import viewStyles from "./view.css" with { type: "text" };
 
 type Walkthrough = Review | Tour;
@@ -40,6 +40,7 @@ function useBridgedHost(item: PluginItem<Walkthrough>, context: PluginItemContex
   const reviewOnly = (action: WalkthroughAction) => (isReview ? void send(action).catch(failed) : failed(NOT_IN_A_TOUR));
   return {
     openInEditor: (path, line) => void send({ kind: "open-in-editor", path, line }).catch(failed),
+    openInLabel: openInLabel(context.opensIn),
     updateFinding: (findingId, change) => reviewOnly({ kind: "update-finding", findingId, ...change }),
     updateAnswer: (answerId, change) => reviewOnly({ kind: "update-answer", answerId, ...change }),
     post: () => reviewOnly({ kind: "post" }),

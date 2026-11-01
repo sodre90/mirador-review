@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { posix, win32 } from "node:path";
 import { fileInCheckout, ideaLauncherMissing } from "../host/review/editor.ts";
+import { openInLabel } from "../web/walkthrough-host.ts";
 
 test("without IDEA's launcher, the host says how IDEA sets one up on the host's platform", () => {
   expect(ideaLauncherMissing("darwin")).toContain("In IDEA, choose Tools › Create Command Line Launcher…");
@@ -19,4 +20,10 @@ test("a file outside the checkout, or no line of it, does not open", () => {
   expect(() => fileInCheckout("/work/shop", "/etc/hosts", 1, posix)).toThrow("is not a line in the reviewed checkout");
   expect(() => fileInCheckout("C:/Users/me/shop", "..\\secrets.txt", 1, win32)).toThrow("is not a line in the reviewed checkout");
   expect(() => fileInCheckout("/work/shop", "src/app.ts", 0, posix)).toThrow("is not a line in the reviewed checkout");
+});
+
+test("buttons name the editor Mirador opens files in, and IDEA with a Mirador from before its editor setting", () => {
+  expect(openInLabel("VS Code")).toBe("Open in VS Code");
+  expect(openInLabel(null)).toBe("Open in editor");
+  expect(openInLabel(undefined)).toBe("Open in IDEA");
 });

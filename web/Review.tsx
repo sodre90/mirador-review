@@ -325,7 +325,7 @@ function FindingCard({
           Ask
         </button>
         <button type="button" className="link" onClick={() => host.openInEditor(finding.at.path, finding.at.line)}>
-          Open in IDEA
+          {host.openInLabel}
         </button>
       </footer>
     </article>
@@ -859,7 +859,7 @@ function FlowTour({
               {anchorLabel(step.at)}
             </button>
             <button type="button" className="link" onClick={() => host.openInEditor(step.at.path, step.at.line)}>
-              Open in IDEA
+              {host.openInLabel}
             </button>
           </header>
           <div className="flow-step-say">
@@ -1136,7 +1136,7 @@ function FileDiff({
         <span className="spacer" />
         {file.change !== "deleted" && (
           <button type="button" className="link" onClick={() => host.openInEditor(file.path, lineToOpen(file.hunks[hunkIndex]?.rows ?? []))}>
-            Open in IDEA
+            {host.openInLabel}
           </button>
         )}
       </header>
@@ -1241,7 +1241,7 @@ function useScrollIntoView(
 /**
  * A review or a tour as a guided read: the agent's summary, a tour of the code flow and the diff; a review adds the
  * findings on their lines, to keep, drop, edit and post. Keys: 1-5 tabs, ←/→ tour steps, j/k changes, n/p findings,
- * f files, o open in IDEA, a ask the agent about the selected lines.
+ * f files, o open in the editor, a ask the agent about the selected lines.
  */
 export function WalkthroughView({ item, host }: { item: WalkthroughItem; host: WalkthroughHost }) {
   return (
@@ -1478,7 +1478,7 @@ function Walkthrough({ item }: { item: WalkthroughItem }) {
                 Ask (a)
               </button>
               <button type="button" onClick={() => host.openInEditor(selection.path, lineToOpen(selection.rows))}>
-                Open in IDEA (o)
+                {host.openInLabel} (o)
               </button>
             </span>
           )}
@@ -1633,7 +1633,7 @@ function Walkthrough({ item }: { item: WalkthroughItem }) {
               <kbd>f</kbd> files · <kbd>{shortcutKeys().find}</kbd> find ·{" "}
             </>
           )}
-          click line numbers (⇧ to extend), then <kbd>a</kbd> ask or <kbd>o</kbd> open in IDEA
+          click line numbers (⇧ to extend), then <kbd>a</kbd> ask or <kbd>o</kbd> open in the editor
         </footer>
       </div>
     </ShownAgentEdits.Provider>

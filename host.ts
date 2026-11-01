@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import type { CanvasActionContext, CanvasHost, CanvasPluginContext, CanvasTool, PluginItem, PluginItemType } from "./mirador/api.ts";
 import type { Review, Tour } from "./shared/review.ts";
 import type { PlaceInWalkthrough, Recalled, StoredPaneShares, WalkthroughAction } from "./shared/walkthrough-actions.ts";
-import { openInIdea } from "./host/review/editor.ts";
+import { fileInCheckout, launchIdea } from "./host/review/editor.ts";
 import { ghCli, type GitHubCli } from "./host/review/github.ts";
 import { reviewedFileLines } from "./host/review/snapshot.ts";
 import { snapshotTour, touredFileLines } from "./host/review/tour.ts";
@@ -84,6 +84,12 @@ const TOUR_OFTEN =
  * request with gh, and its guided read of how code works or what it changed. Both are anchored to lines the view shows
  * with the code around them. What runs gh is given, so tests can stand in for it.
  */
+/** In the editor Mirador's Settings name; in IDEA with a Mirador from before that setting. */
+function openInEditor(file: string, line: number, context: CanvasActionContext<Walkthrough>) {
+  if (context.openInEditor) context.openInEditor(file, line);
+  else launchIdea(file, line);
+}
+
 export function codeReviewPlugin(gh: GitHubCli): CanvasHost<Walkthrough> {
   const reviews = codeReviews(gh);
 
@@ -98,7 +104,7 @@ export function codeReviewPlugin(gh: GitHubCli): CanvasHost<Walkthrough> {
       case "read-file":
         return readFile(item, action.path);
       case "open-in-editor":
-        return void openInIdea(checkoutOf(item), action.path, action.line);
+        return void openInEditor(fileInCheckout(checkoutOf(item), action.path, action.line), action.line, context);
     }
     if (isReviewAction(action) && isReview(item)) return reviews.act(item, action, context as CanvasActionContext<Review>);
     throw new Error(isReviewAction(action) ? "Only a review takes that action." : "The review plugin doesn't know that action.");

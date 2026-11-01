@@ -16,6 +16,8 @@ export interface WalkthroughPaneShares {
  */
 export interface WalkthroughHost {
   openInEditor(path: string, line: number): void;
+  /** What buttons that open the editor say, such as "Open in VS Code". */
+  openInLabel: string;
   updateFinding(findingId: string, change: { decision?: FindingDecision; body?: string }): void;
   updateAnswer(answerId: string, change: { decision?: FindingDecision; body?: string; resolve?: boolean }): void;
   post(): void;
@@ -31,6 +33,9 @@ export interface WalkthroughHost {
   placeLeft(): PlaceInWalkthrough | undefined;
   leavePlace(place: PlaceInWalkthrough): void;
 }
+
+/** What buttons that open the editor say; a Mirador from before its editor setting opens files in IDEA. */
+export const openInLabel = (opensIn: string | null | undefined) => (opensIn === undefined ? "Open in IDEA" : opensIn ? `Open in ${opensIn}` : "Open in editor");
 
 export const WalkthroughHostContext = createContext<WalkthroughHost | null>(null);
 
