@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { codeReviewPlugin } from "../host.ts";
+import type { CanvasHost } from "../mirador/api.ts";
 import type { GitHubCli } from "../host/review/github.ts";
 import { verdictInBrief, type Review, type ReviewAnswer, type ReviewFinding, type Tour } from "../shared/review.ts";
 import type { PlaceInWalkthrough } from "../shared/walkthrough-actions.ts";
@@ -34,7 +35,7 @@ const NO_GH: GitHubCli = async () => {
   throw new Error("No gh in this test.");
 };
 
-const setUp = (store?: Store, gh = NO_GH) => canvasPluginHost(pluginsFolderWithThisPlugin(), store, { review: codeReviewPlugin(gh) });
+const setUp = (store?: Store, gh = NO_GH) => canvasPluginHost(pluginsFolderWithThisPlugin(), store, { review: codeReviewPlugin(gh) as CanvasHost });
 
 const place = (tab: PlaceInWalkthrough["tab"]): PlaceInWalkthrough => ({ tab, stepIndex: 1, path: null, hunkIndex: 0, findingId: null, answerId: null, scrolled: {} });
 
