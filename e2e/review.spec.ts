@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { helpers, installThisPlugin, testHost } from "./mirador.ts";
 
-const { addWorkspace, callCanvasTool, openCanvasHistory, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard, walkthroughView } = helpers;
+const { addWorkspace, callCanvasTool, openCanvasHistory, openPluginDetail, openPlugins, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard, walkthroughView } = helpers;
 const { bunProgramPath, programOnRegistryPath, TestHost, writeBunProgram } = testHost;
 
 const host = new TestHost({ fakePrograms: true });
@@ -347,10 +347,10 @@ test("a review opens full screen; the user tours the flow, moves through changes
   });
 
   await test.step("with the code review plugin set to open reviews beside the chat, the next review leaves the chat in view", async () => {
-    const settings = await openSettings(page, "Plugins");
-    const codeReview = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem").filter({ hasText: "Code review" });
+    const plugins = await openPlugins(page);
+    const codeReview = await openPluginDetail(plugins, "Code review");
     await codeReview.getByLabel("Open reviews").selectOption({ label: "In the canvas pane, beside the chat" });
-    await settings.getByRole("button", { name: "Close" }).click();
+    await plugins.getByRole("button", { name: "Close" }).click();
     await callCanvasTool(host, conversationId, "review", review({ title: "Second look", pullRequest: undefined, findings: [] }));
     await expect(page.locator(".canvas-title")).toHaveText("Second look");
     await expect(view.locator(".verdict")).toBeVisible();
@@ -359,10 +359,10 @@ test("a review opens full screen; the user tours the flow, moves through changes
 
   await test.step("Mirador keeps the setting, so a reloaded page still has it", async () => {
     await page.reload();
-    const settings = await openSettings(page, "Plugins");
-    const codeReview = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem").filter({ hasText: "Code review" });
+    const plugins = await openPlugins(page);
+    const codeReview = await openPluginDetail(plugins, "Code review");
     await expect(codeReview.getByLabel("Open reviews")).toHaveValue("beside");
-    await settings.getByRole("button", { name: "Close" }).click();
+    await plugins.getByRole("button", { name: "Close" }).click();
   });
 });
 
