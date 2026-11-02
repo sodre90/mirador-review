@@ -2,7 +2,7 @@
   "name": "review",
   "title": "Code review",
   "icon": "icon.svg",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "api": 3,
   "canvas": {
     "host": "host.ts",

@@ -157,7 +157,11 @@ test("the plugin's gallery screenshots", async ({ page }) => {
 
   await reviewView.getByRole("tab", { name: /Findings/ }).click();
   await expect(reviewView.locator(".code-row").first()).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 1250 });
+  await expect(reviewView.locator(".code-row").first()).toBeVisible();
+  await page.mouse.move(0, 0);
   await save("review-findings");
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   const tourView = await showCanvas(page, "tour", tour, conversationId);
   await tourView.getByRole("button", { name: "Capture the payment, retrying" }).click();
