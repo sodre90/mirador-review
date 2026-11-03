@@ -32,7 +32,7 @@ export async function answersToConversations(request: ReviewRequest, gh: GitHubC
     }
     answeredThreads.add(conversation.threadId);
     const { commentIds, ...shown } = conversation;
-    return { ...shown, id: `answer-${index + 1}`, body: answer.body, suggestsResolving: answer.resolve === true, resolve: false, decision: "keep" };
+    return { ...shown, id: `answer-${index + 1}`, body: answer.body, suggestsResolving: answer.resolve === true, resolve: answer.resolve === true && shown.canResolve, decision: "keep" };
   });
   if (problems.length > 0) throw new ReviewProblems(problems);
   return answers.filter((answer) => answer !== null);

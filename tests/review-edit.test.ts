@@ -139,6 +139,14 @@ describe("applyReviewEdit", () => {
     expect(changed).toEqual(["answer-1"]);
   });
 
+  test("a changed suggestion to resolve sets Resolve when posted again", async () => {
+    const withdrawn = await edited({ ...(await publishedReview()), answers: [answer({ suggestsResolving: true, resolve: true })] }, { answers: [{ id: "answer-1", resolve: false }] });
+    expect(withdrawn.review.answers![0]).toMatchObject({ suggestsResolving: false, resolve: false });
+
+    const suggested = await edited({ ...(await publishedReview()), answers: [answer()] }, { answers: [{ id: "answer-1", resolve: true }] });
+    expect(suggested.review.answers![0]).toMatchObject({ suggestsResolving: true, resolve: true });
+  });
+
   test("an edit that changes nothing is a problem", async () => {
     expect(await problemsOf(edited(await publishedReview(), { findings: [] }))).toEqual([expect.stringContaining("Nothing to change")]);
   });

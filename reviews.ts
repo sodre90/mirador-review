@@ -67,7 +67,7 @@ const reviewSchema = z.object({
           .boolean()
           .optional()
           .describe(
-            "Suggest resolving the conversation with this answer, e.g. when the author fixed what it was about. The user decides; resolving shows on GitHub at once.",
+            "Suggest resolving the conversation with this answer, e.g. when the author fixed what it was about. Resolve when posted starts ticked for the user, who can untick it; resolving shows on GitHub at once.",
           ),
       }),
     )

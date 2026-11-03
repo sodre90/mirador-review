@@ -9,6 +9,7 @@ import {
   type ReviewAnswer,
   type ReviewFinding,
 } from "../../shared/review.ts";
+import { resolveChoice } from "./carry-over.ts";
 import { AnchorReader, commitLines, mapInOrder, ReviewProblems } from "./snapshot.ts";
 
 export interface NewFinding {
@@ -118,7 +119,7 @@ export function applyReviewEdit(review: Review, edit: ReviewEdit, anchors: EditA
     if (!answer) return;
     const { agentBody, postError: _postError, ...unchanged } = answer;
     const userWordingStays = body === undefined && agentBody !== undefined;
-    editedAnswers.set(answer.id, { ...unchanged, ...(userWordingStays && { agentBody }), ...definedOnly({ body, suggestsResolving: resolve }) });
+    editedAnswers.set(answer.id, { ...unchanged, ...(userWordingStays && { agentBody }), ...definedOnly({ body, suggestsResolving: resolve }), ...(resolve !== undefined && { resolve: resolveChoice(answer, resolve) }) });
   });
   if (problems.length > 0) throw new ReviewProblems(problems, REVIEW_NOT_CHANGED);
 

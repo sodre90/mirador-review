@@ -83,10 +83,17 @@ describe("the pull request's conversations", () => {
 });
 
 describe("answers to conversations", () => {
-  test("are shown with their conversation as GitHub has it, kept, and not resolved until the user says so", async () => {
-    const answers = await answersToConversations(request([{ conversation: `${PULL_REQUEST}#discussion_r102`, body: "Fixed, thanks.", resolve: true }]), gitHubWithConversations().gh);
+  test("are shown with their conversation as GitHub has it, kept, and resolved when posted if the agent suggests it and GitHub allows", async () => {
+    const answers = await answersToConversations(
+      request([
+        { conversation: `${PULL_REQUEST}#discussion_r102`, body: "Fixed, thanks.", resolve: true },
+        { conversation: "PRRT_b", body: "Still there.", resolve: true },
+      ]),
+      gitHubWithConversations().gh,
+    );
     expect(answers).toEqual([
-      expect.objectContaining({ id: "answer-1", threadId: "PRRT_a", body: "Fixed, thanks.", suggestsResolving: true, resolve: false, decision: "keep" }),
+      expect.objectContaining({ id: "answer-1", threadId: "PRRT_a", body: "Fixed, thanks.", suggestsResolving: true, resolve: true, decision: "keep" }),
+      expect.objectContaining({ id: "answer-2", threadId: "PRRT_b", suggestsResolving: true, resolve: false }),
     ]);
     expect(answers[0]!.comments).toHaveLength(2);
     expect(answers[0]).not.toHaveProperty("commentIds");
@@ -186,18 +193,26 @@ describe("posting answers", () => {
     expect(outcome.errors.get("two")).toBe("The answer is on your pending review, but the conversation was not resolved: Not allowed");
   });
 
-  test("published again, an answer to the same conversation keeps what the user did with it", () => {
+  test("published again, an answer to the same conversation keeps what the user did with it, unless the agent stopped suggesting to resolve it", () => {
     const earlier = [
       answer("1", { threadId: "PRRT_x", decision: "drop", resolve: true }),
       answer("2", { threadId: "PRRT_y", body: "As posted.", postedAs: { url: "u" } }),
       answer("3", { threadId: "PRRT_z", body: "The user's words.", agentBody: "Reply 1" }),
+      answer("5", { threadId: "PRRT_w", suggestsResolving: true, resolve: true }),
     ];
-    const again = [answer("1", { threadId: "PRRT_y" }), answer("2", { threadId: "PRRT_x" }), answer("3", { threadId: "PRRT_z", body: "Reply 1" }), answer("4", { threadId: "PRRT_new" })];
+    const again = [
+      answer("1", { threadId: "PRRT_y" }),
+      answer("2", { threadId: "PRRT_x" }),
+      answer("3", { threadId: "PRRT_z", body: "Reply 1" }),
+      answer("4", { threadId: "PRRT_new" }),
+      answer("5", { threadId: "PRRT_w" }),
+    ];
     expect(carryOverAnswerChoices(earlier, again).map(({ id, decision, resolve, body, postedAs }) => ({ id, decision, resolve, body, posted: !!postedAs }))).toEqual([
       { id: "1", decision: "keep", resolve: false, body: "As posted.", posted: true },
       { id: "2", decision: "drop", resolve: true, body: "Reply 2", posted: false },
       { id: "3", decision: "keep", resolve: false, body: "The user's words.", posted: false },
       { id: "4", decision: "keep", resolve: false, body: "Reply 4", posted: false },
+      { id: "5", decision: "keep", resolve: false, body: "Reply 5", posted: false },
     ]);
   });
 });

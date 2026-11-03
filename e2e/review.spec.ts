@@ -366,7 +366,7 @@ test("a review opens full screen; the user tours the flow, moves through changes
   });
 });
 
-test("a re-review answers the pull request's conversations; the user resolves one, rewords the other, and posts both as replies", async ({ page }) => {
+test("a re-review answers the pull request's conversations; the one the agent suggests resolving starts ticked; the user rewords the other and posts both as replies", async ({ page }) => {
   await signIn(page, host);
   const addProject = page.getByRole("button", { name: "+ Add a project directory" });
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
@@ -393,16 +393,17 @@ test("a re-review answers the pull request's conversations; the user resolves on
     await expect(view.getByRole("tab", { name: /Conversations/ })).toHaveAttribute("aria-selected", "true");
     await expect(fallback.locator(".conversation-comments li")).toHaveText([/^reviewer\s*Why the anonymous fallback\?$/, /^author\s*Product asked for it; guarded below\.$/]);
     await expect(fallback.locator(".answer-body")).toContainText("Thanks, the guard below covers it.");
-    await expect(fallback.getByLabel("Resolve when posted (the agent suggests it)")).not.toBeChecked();
+    await expect(fallback.getByLabel("Resolve when posted (the agent suggests it)")).toBeChecked();
     await expect(typo.locator(".conversation-state")).toHaveText("Outdated");
     await expect(typo.locator(".anchor")).toHaveText("items.ts:2");
     await expect(typo.getByLabel("Resolve when posted")).toBeDisabled();
   });
 
-  await test.step("the user resolves one and rewords the other; posting replies on the pending review and resolves the one", async () => {
+  await test.step("the user rewords one; posting replies on the pending review and resolves the one the agent suggested", async () => {
     const callsBefore = logLines(ghLog).length;
     await fallback.getByLabel(/Resolve when posted/).click();
-    await expect(fallback.getByLabel(/Resolve when posted/)).toBeChecked();
+    await expect(view.locator(".post-panel")).not.toContainText("resolved as you post");
+    await fallback.getByLabel(/Resolve when posted/).click();
     await expect(view.locator(".post-panel")).toContainText("1 conversation is resolved as you post");
     await typo.getByRole("button", { name: "Edit" }).click();
     await typo.locator("textarea").fill("Still there, in fetchItems.");

@@ -52,6 +52,11 @@ export function carryOverChoices(earlier: ReviewFinding[], findings: ReviewFindi
 export function carryOverAnswerChoices(earlier: ReviewAnswer[], answers: ReviewAnswer[]): ReviewAnswer[] {
   return answers.map((answer) => {
     const match = earlier.find(({ threadId }) => threadId === answer.threadId);
-    return match ? { ...withChoicesOf(match, answer), resolve: match.resolve } : answer;
+    return match ? { ...withChoicesOf(match, answer), resolve: resolveChoice(match, answer.suggestsResolving) } : answer;
   });
+}
+
+/** The user's Resolve when posted stays while the agent's suggestion does; a changed suggestion sets the box again. */
+export function resolveChoice(earlier: ReviewAnswer, suggestsResolving: boolean): boolean {
+  return suggestsResolving === earlier.suggestsResolving ? earlier.resolve : suggestsResolving && earlier.canResolve;
 }
