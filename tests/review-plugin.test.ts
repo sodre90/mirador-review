@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { codeReviewPlugin } from "../host.ts";
 import type { CanvasHost } from "../mirador/api.ts";
 import type { GitHubCli } from "../host/review/github.ts";
-import { verdictInBrief, type Review, type ReviewAnswer, type ReviewFinding, type Tour } from "../shared/review.ts";
+import { postAsOf, postBodyOf, verdictInBrief, verdictReason, type Review, type ReviewAnswer, type ReviewFinding, type Tour } from "../shared/review.ts";
 import type { PlaceInWalkthrough } from "../shared/walkthrough-actions.ts";
 import { gitRepository, reviewRequest } from "./review-repository.ts";
 
@@ -99,6 +99,20 @@ describe("a review's verdict in brief, as the canvas bar shows it", () => {
     expect(verdictInBrief("Approve — a small, correct CSS fix.")).toBe("Approve");
     expect(verdictInBrief("Approve.")).toBe("Approve.");
     expect(verdictInBrief(": nothing before the colon")).toBe(": nothing before the colon");
+  });
+});
+
+describe("how a review is posted, until the user chooses", () => {
+  test("is what the verdict's first words say, else a draft; the summary is the verdict's reason", () => {
+    expect(postAsOf({ verdict: "Request changes: the fallback skips auth." })).toBe("request-changes");
+    expect(postAsOf({ verdict: "Approve with nits — two names." })).toBe("approve");
+    expect(postAsOf({ verdict: "Needs a closer look: the cache." })).toBe("draft");
+    expect(postAsOf({ verdict: "Approve.", postAs: "comment" })).toBe("comment");
+    expect(verdictReason("Request changes: the fallback skips auth.")).toBe("the fallback skips auth.");
+    expect(verdictReason("Approve — a small, correct CSS fix.")).toBe("a small, correct CSS fix.");
+    expect(verdictReason("Approve.")).toBe("");
+    expect(postBodyOf({ verdict: "Approve: fine.", postBody: "" })).toBe("");
+    expect(postBodyOf({ verdict: "Approve: fine." })).toBe("fine.");
   });
 });
 
@@ -219,7 +233,15 @@ describe("the review plugin: reviews", () => {
 
   /** GitHub, with the pull request's head, and the commit of the user's pending review if they have one, where the test puts them; every comment taken. */
   function movingPullRequest() {
-    const pullRequest = { head: "", pendingReviewCommit: null as string | null, unreachable: false, answered: Promise.resolve(), threadsAdded: 0 };
+    const pullRequest = {
+      head: "",
+      pendingReviewCommit: null as string | null,
+      unreachable: false,
+      answered: Promise.resolve(),
+      threadsAdded: 0,
+      submitted: [] as { event: string; body?: string }[],
+      refuseSubmit: null as string | null,
+    };
     const gh: GitHubCli = async (args, body: any) => {
       await pullRequest.answered;
       if (pullRequest.unreachable) throw new Error("error connecting to api.github.com");
@@ -229,6 +251,12 @@ describe("the review plugin: reviews", () => {
         return { data: { repository: { pullRequest: { reviews: { nodes } } } } };
       }
       if (body.query.includes("addPullRequestReview(")) return { data: { addPullRequestReview: { pullRequestReview: { id: "PRR_2", url: "https://github.com/review/2" } } } };
+      if (body.query.includes("submitPullRequestReview(")) {
+        if (pullRequest.refuseSubmit) return { errors: [{ message: pullRequest.refuseSubmit }] };
+        const { event, body: summary } = body.variables.input;
+        pullRequest.submitted.push({ event, ...(summary && { body: summary }) });
+        return { data: { submitPullRequestReview: { pullRequestReview: { url: "https://github.com/review/2#submitted" } } } };
+      }
       pullRequest.threadsAdded++;
     return { data: { addPullRequestReviewThread: { thread: { id: "thread-1" } } } };
     };
@@ -243,8 +271,8 @@ describe("the review plugin: reviews", () => {
     const item = setup.items()[0]!;
     const review = () => reviewOf(setup.store.findCanvasItem(item.id))!;
     const act = (action: Record<string, unknown>) => setup.plugins.act(item.id, action);
-    const post = async () => {
-      await act({ kind: "post" });
+    const post = async (choice: Record<string, unknown> = {}) => {
+      await act({ kind: "post", ...choice });
       while (review().posting) await Bun.sleep(1);
     };
     return { ...setup, pullRequest, item, headCommit: review().headCommit, review, act, post, movedOn: () => review().pullRequestMovedOn };
@@ -340,6 +368,58 @@ describe("the review plugin: reviews", () => {
       expect(review().findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
       expect(review().pendingReviewUrl).toBe("https://github.com/review/2");
       expect(pullRequest.threadsAdded).toBe(1);
+    });
+
+    test("a post as Request changes submits the review with the summary, and keeps the choice and the summary on the review", async () => {
+      const { pullRequest, headCommit, review, post } = await reviewOfPullRequest();
+      pullRequest.head = headCommit;
+      await post({ as: "request-changes", body: "Load fails on empty input." });
+      expect(pullRequest.submitted).toEqual([{ event: "REQUEST_CHANGES", body: "Load fails on empty input." }]);
+      expect(review()).toMatchObject({ postAs: "request-changes", postBody: "Load fails on empty input.", submittedAs: "request-changes", pendingReviewUrl: "https://github.com/review/2#submitted" });
+      expect(review().findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
+    });
+
+    test("a bare post, as the phone app sends, leaves the review a draft whatever the user chose here", async () => {
+      const { pullRequest, headCommit, review, act, post } = await reviewOfPullRequest();
+      pullRequest.head = headCommit;
+      await act({ kind: "choose-post", as: "approve" });
+      await post();
+      expect(pullRequest.submitted).toEqual([]);
+      expect(review().submittedAs).toBeUndefined();
+      expect(review().postAs).toBe("approve");
+    });
+
+    test("an approval GitHub refuses keeps the comments that went and says why the review is still pending", async () => {
+      const { pullRequest, headCommit, review, post } = await reviewOfPullRequest();
+      pullRequest.head = headCommit;
+      pullRequest.refuseSubmit = "Can not approve your own pull request";
+      await post({ as: "approve", body: "" });
+      expect(review().submitFailure).toBe("Can not approve your own pull request");
+      expect(review().submittedAs).toBeUndefined();
+      expect(review().findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
+
+      pullRequest.refuseSubmit = null;
+      await post({ as: "comment", body: "Two notes." });
+      expect(review().submitFailure).toBeUndefined();
+      expect(review().submittedAs).toBe("comment");
+      expect(pullRequest.threadsAdded).toBe(1);
+    });
+
+    test("publishing the review again keeps how the user chose to post it, and their summary", async () => {
+      const { review, act, callTool, items } = await reviewOfPullRequest();
+      await act({ kind: "choose-post", as: "comment", body: "Mine." });
+      await callTool("review", reviewRequest(review().repository, { pullRequest: "https://github.com/team/shop/pull/7" }));
+      expect(items()).toHaveLength(2);
+      expect(reviewOf(items().at(-1)!)).toMatchObject({ postAs: "comment", postBody: "Mine." });
+    });
+
+    test("a summary the user sets back to the verdict's reason follows the verdict again; a way to post Mirador doesn't know is refused", async () => {
+      const { review, act } = await reviewOfPullRequest();
+      await act({ kind: "choose-post", body: "Mine." });
+      expect(review().postBody).toBe("Mine.");
+      await act({ kind: "choose-post", body: "" });
+      expect(review().postBody).toBeUndefined();
+      await expect(act({ kind: "choose-post", as: "merge" })).rejects.toThrow('"merge" is not a way to post a review.');
     });
 
     test("a post that fails as a whole says why on the review, until the user posts again", async () => {

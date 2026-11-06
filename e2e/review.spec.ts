@@ -13,6 +13,7 @@ const ghLog = join(host.root, "gh.log");
 const ghAuthLog = join(host.root, "gh-auth.log");
 const ghLoggedOut = join(host.root, "gh-logged-out");
 const ghUnreachable = join(host.root, "gh-unreachable");
+const ghRefusesSubmit = join(host.root, "gh-refuses-submit");
 const ghThreads = join(host.root, "gh-review-threads.json");
 const ideaLog = join(host.root, "idea.log");
 const PULL_REQUEST = "https://ghe.example.com/team/shop/pull/7";
@@ -106,6 +107,7 @@ function writeFakePrograms(head: string, pendingReviewCommit = "") {
     FAKE_GH_AUTH_LOG: ghAuthLog,
     FAKE_GH_LOGGED_OUT: ghLoggedOut,
     FAKE_GH_UNREACHABLE: ghUnreachable,
+    FAKE_GH_REFUSES_SUBMIT: ghRefusesSubmit,
     FAKE_GH_HEAD: head,
     FAKE_GH_PENDING_REVIEW_COMMIT: pendingReviewCommit,
     FAKE_GH_THREADS: ghThreads,
@@ -113,6 +115,9 @@ function writeFakePrograms(head: string, pendingReviewCommit = "") {
   });
   writeBunProgram(fakeProgramsDir, "idea", join(import.meta.dirname, "fake-idea.ts"), { FAKE_IDEA_LOG: ideaLog });
 }
+
+/** Posting as the fixture's verdict suggests would submit the review; tests of anything else keep it pending. */
+const leaveAsDraft = (within: Locator | Page) => within.getByRole("radio", { name: "Leave as a draft" }).first().check();
 
 const review = (change: Record<string, unknown> = {}) => ({
   title: "PR 7: fetch items for the user",
@@ -171,6 +176,14 @@ test("a review opens full screen; the user tours the flow, moves through changes
   const view = walkthroughView(page).locator(".review");
   await expect(view.locator(".verdict")).toHaveText("Request changes: the anonymous fallback skips authentication.");
   await expect(canvasPane(page)).toHaveClass(/fullscreen/);
+
+  await test.step("the verdict picks how to post, Request changes here, with its reason as the summary; the user leaves it a draft", async () => {
+    await expect(view.getByRole("radio", { name: "Request changes" })).toBeChecked();
+    await expect(view.getByRole("textbox", { name: "Summary" })).toHaveValue("the anonymous fallback skips authentication.");
+    await expect(view.getByRole("button", { name: "Post 2 findings and request changes" })).toBeVisible();
+    await leaveAsDraft(view);
+    await expect(view.getByRole("textbox", { name: "Summary" })).toHaveCount(0);
+  });
 
   await test.step("while gh is not logged in to the pull request's host, Post says what to run and waits until gh is checked again", async () => {
     const hint = view.locator(".github-cli-problem");
@@ -408,6 +421,7 @@ test("a re-review answers the pull request's conversations; the one the agent su
     await typo.getByRole("button", { name: "Edit" }).click();
     await typo.locator("textarea").fill("Still there, in fetchItems.");
     await typo.getByRole("button", { name: "Save" }).click();
+    await leaveAsDraft(view);
     await view.getByRole("button", { name: "Post 2 answers to the pull request" }).click();
     await expect(fallback).toContainText("On your pending review, conversation resolved");
     await expect(typo).toContainText("On your pending review");
@@ -624,6 +638,7 @@ test("with no gh on the machine, the Post panel says to install it, and Post wai
   renameSync(fakeGh, putAway);
   try {
     await callCanvasTool(host, conversationId, "review", review());
+    await leaveAsDraft(view);
     await expect(hint).toContainText("Posting needs the GitHub CLI, and no gh was found. Install it, then run gh auth login --hostname ghe.example.com.");
     await expect(hint.getByRole("link", { name: "Install it" })).toHaveAttribute("href", "https://cli.github.com");
     await expect(post).toBeDisabled();
@@ -652,6 +667,7 @@ test("once the pull request moved on, every page showing the review says so in p
 
   writeFakePrograms(pushed);
   try {
+    await leaveAsDraft(postPanel(page));
     await postPanel(page).getByRole("button", { name: "Post 2 findings to the pull request" }).click();
     for (const showing of [page, otherPage]) {
       await expect(postPanel(showing)).toContainText(`The pull request has changed since the review: its head is 5c14edd6b1, the review is of ${reviewed.slice(0, 10)}.`);
@@ -689,6 +705,7 @@ test("a pending review the user started on another commit is named above Post wi
 
   writeFakePrograms(reviewed, "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567");
   try {
+    await leaveAsDraft(postPanel);
     const calledBefore = logLines(ghLog).length;
     await post.click();
     await expect(postPanel).toContainText(note);
@@ -719,6 +736,7 @@ test("a post that fails as a whole says why above Post on every page showing the
   const postPanel = (showing: Page) => walkthroughView(showing).locator(".review .post-panel");
   const post = postPanel(page).getByRole("button", { name: "Post 2 findings to the pull request" });
 
+  await leaveAsDraft(postPanel(page));
   writeFileSync(ghUnreachable, "");
   try {
     await post.click();
@@ -739,7 +757,56 @@ test("a post that fails as a whole says why above Post on every page showing the
   await otherPage.close();
 });
 
-test("a review with nothing to comment on says so on its Findings tab, and links its pull request there and in the Overview", async ({ page }) => {
+test("Approve submits the review with its comments; a refusal keeps them posted and the review pending, and Comment then submits it with the user's summary", async ({ page }) => {
+  rmSync(ghLoggedOut, { force: true });
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  await callCanvasTool(host, conversationId, "review", review({ verdict: "Approve: two small questions." }));
+  const postPanel = walkthroughView(page).locator(".review .post-panel");
+  const summary = postPanel.getByRole("textbox", { name: "Summary" });
+  const submitted = () =>
+    logLines(ghLog)
+      .flatMap((line) => (line.split("\t")[1] ? [JSON.parse(line.split("\t")[1]!)] : []))
+      .filter(({ query }) => query.includes("submitPullRequestReview("))
+      .map(({ variables }) => variables.input);
+  const submittedBefore = submitted().length;
+
+  await expect(postPanel.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(summary).toHaveValue("two small questions.");
+  await expect(postPanel).toContainText("and posting submits your review as an approval, which everyone sees at once");
+
+  writeFileSync(ghRefusesSubmit, "");
+  try {
+    await postPanel.getByRole("button", { name: "Post 2 findings and approve" }).click();
+    await expect(postPanel.getByRole("alert")).toHaveText("The review is still pending, not submitted: Can not approve your own pull request");
+    await expect(postPanel.locator(".posted-note")).toContainText("2 findings are on your pending review");
+  } finally {
+    rmSync(ghRefusesSubmit, { force: true });
+  }
+
+  await postPanel.getByRole("radio", { name: "Request changes" }).check();
+  await summary.fill("");
+  await expect(postPanel).toContainText("Request changes needs a summary on GitHub.");
+  await expect(postPanel.getByRole("button", { name: "Request changes" })).toBeDisabled();
+
+  await postPanel.getByRole("radio", { name: "Comment" }).check();
+  await summary.fill("Two questions on the fallback.");
+  await postPanel.getByRole("button", { name: "Comment on the pull request" }).click();
+  await expect(postPanel.locator(".posted-note")).toHaveText("2 findings are on your review, submitted as a comment. Open it on GitHub");
+  await expect(postPanel.getByRole("link", { name: "Open it on GitHub" })).toHaveAttribute("href", `${PULL_REQUEST}#pullrequestreview-1`);
+  await expect(postPanel.getByRole("alert")).toHaveCount(0);
+  await expect(postPanel.getByRole("button", { name: /^(Post|Comment|Approve|Request)/ })).toHaveCount(0);
+  expect(submitted().slice(submittedBefore)).toEqual([
+    { pullRequestReviewId: "PRR_1", event: "APPROVE", body: "two small questions." },
+    { pullRequestReviewId: "PRR_1", event: "COMMENT", body: "Two questions on the fallback." },
+  ]);
+});
+
+test("a review with nothing to comment on says so on its Findings tab, links its pull request there and in the Overview, and approves it with no comments", async ({ page }) => {
+  rmSync(ghLoggedOut, { force: true });
   await signIn(page, host);
   const addProject = page.getByRole("button", { name: "+ Add a project directory" });
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
@@ -750,9 +817,13 @@ test("a review with nothing to comment on says so on its Findings tab, and links
   await expect(canvasPane(page).locator(".canvas-header .canvas-outcome")).toHaveText("Approve");
   await view.getByRole("tab", { name: /Findings/ }).click();
   await expect(view.locator(".findings-view")).toContainText("The agent found nothing to comment on.");
-  await expect(view.locator(".post-panel")).toHaveText("Pull request team/shop pull 7");
+  await expect(view.locator(".post-panel h3")).toHaveText("Pull request team/shop pull 7");
   await expect(view.locator(".post-panel").getByRole("link", { name: "team/shop pull 7" })).toHaveAttribute("href", PULL_REQUEST);
   await expect(view.getByRole("button", { name: /^Post/ })).toHaveCount(0);
+  await expect(view.locator(".post-panel")).toContainText("Posting submits your review as an approval, which everyone sees at once.");
+  await view.getByRole("button", { name: "Approve the pull request" }).click();
+  await expect(view.locator(".posted-note")).toHaveText("Your review is submitted as an approval. Open it on GitHub");
+  await expect(view.getByRole("button", { name: "Approve the pull request" })).toHaveCount(0);
   await view.getByRole("tab", { name: /Overview/ }).click();
   await expect(view.locator(".verdict")).toHaveText("Approve: a small, correct fix.");
   await expect(view.locator(".review-stats").getByRole("link", { name: "team/shop pull 7" })).toHaveAttribute("href", PULL_REQUEST);

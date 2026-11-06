@@ -1,7 +1,7 @@
 /** Stands in for gh in review.spec.ts: it logs how it was called, and answers like GitHub for pull 7 of team/shop. */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 
-const { FAKE_GH_LOG, FAKE_GH_AUTH_LOG, FAKE_GH_LOGGED_OUT, FAKE_GH_UNREACHABLE, FAKE_GH_HEAD, FAKE_GH_PENDING_REVIEW_COMMIT, FAKE_GH_THREADS, FAKE_GH_PULL_REQUEST } = process.env;
+const { FAKE_GH_LOG, FAKE_GH_AUTH_LOG, FAKE_GH_LOGGED_OUT, FAKE_GH_UNREACHABLE, FAKE_GH_REFUSES_SUBMIT, FAKE_GH_HEAD, FAKE_GH_PENDING_REVIEW_COMMIT, FAKE_GH_THREADS, FAKE_GH_PULL_REQUEST } = process.env;
 const args = process.argv.slice(2);
 const called = args.join(" ");
 
@@ -26,6 +26,10 @@ function graphqlAnswer() {
   if (input.includes("reviewThreads(")) return JSON.parse(readFileSync(FAKE_GH_THREADS!, "utf8"));
   if (input.includes("addPullRequestReviewThreadReply(")) return { data: { addPullRequestReviewThreadReply: { comment: { url: `${FAKE_GH_PULL_REQUEST}#discussion_r90` } } } };
   if (input.includes("resolveReviewThread(")) return { data: { resolveReviewThread: { thread: { isResolved: true } } } };
+  if (input.includes("submitPullRequestReview(")) {
+    if (existsSync(FAKE_GH_REFUSES_SUBMIT!)) return { errors: [{ message: "Can not approve your own pull request" }] };
+    return { data: { submitPullRequestReview: { pullRequestReview: { url: `${FAKE_GH_PULL_REQUEST}#pullrequestreview-1` } } } };
+  }
   if (input.includes("addPullRequestReview(")) return { data: { addPullRequestReview: { pullRequestReview: { id: "PRR_1", url: `${FAKE_GH_PULL_REQUEST}#pullrequestreview-1` } } } };
   return { data: { addPullRequestReviewThread: { thread: { id: "THREAD" } } } };
 }

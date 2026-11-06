@@ -2,7 +2,7 @@
 
 A [Mirador](https://github.com/sodre90/mirador) canvas plugin: code reviews and guided tours of the code flow, drawn on the canvas.
 
-- `review` publishes a review of `base...head` in a checkout, like a pull request: a summary, a tour of the code flow, the diff from git and findings on its lines. The user keeps or drops each finding, rewords it, asks the agent about any lines, and posts the kept ones to the GitHub pull request as a pending review, with answers to its existing conversations.
+- `review` publishes a review of `base...head` in a checkout, like a pull request: a summary, a tour of the code flow, the diff from git and findings on its lines. The user keeps or drops each finding, rewords it, asks the agent about any lines, and posts the kept ones to the GitHub pull request, with answers to its existing conversations, as a pending review or submitted as a comment, an approval or a request for changes.
 - `update_review` changes parts of a review in place: findings, answers, the tour, the summary or the verdict.
 - `tour` walks the user through code without reviewing it, or through what a task changed when given a git ref to count from.
 - Lines open in IntelliJ IDEA through its `idea` launcher; posting uses the GitHub CLI, `gh`.

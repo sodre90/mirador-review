@@ -12,18 +12,23 @@ import {
   findingSeverities,
   isCommentable,
   pendingReviewOfOtherCommitNote,
+  postAsNeedsBody,
+  postAsOf,
+  postBodyOf,
   pullRequestMovedOnNote,
   severityLabels,
   type CodeAnchor,
   type DiffRow,
   type FindingDecision,
   type GitHubCliProblem,
+  type PostAs,
   type PullRequestMovedOn,
   type PullRequestRef,
   type Review,
   type ReviewAnswer,
   type ReviewFile,
   type ReviewFinding,
+  type SubmittedAs,
   type Tour,
   type Walkthrough,
 } from "../shared/review.ts";
@@ -510,8 +515,43 @@ function GitHubCliHint({ problem, host, checking, onCheckAgain }: { problem: Git
   );
 }
 
-/** No finding or answer to post, now or later, and nothing posted yet to point to. */
-const hasNothingToPost = (review: Review) => review.findings.length === 0 && answersOf(review).length === 0 && !review.pendingReviewUrl;
+const postAsLabels: Record<PostAs, string> = { draft: "Leave as a draft", comment: "Comment", approve: "Approve", "request-changes": "Request changes" };
+const submittedAsWords: Record<SubmittedAs, string> = { comment: "a comment", approve: "an approval", "request-changes": "a request for changes" };
+const postAndSubmitWords: Record<SubmittedAs, string> = { comment: "comment", approve: "approve", "request-changes": "request changes" };
+const submitOnlyLabels: Record<SubmittedAs, string> = { comment: "Comment on the pull request", approve: "Approve the pull request", "request-changes": "Request changes" };
+
+function postButtonLabel(postAs: PostAs, findingsAndAnswersToPost: string) {
+  if (postAs === "draft") return `Post ${findingsAndAnswersToPost} to the pull request`;
+  return findingsAndAnswersToPost ? `Post ${findingsAndAnswersToPost} and ${postAndSubmitWords[postAs]}` : submitOnlyLabels[postAs];
+}
+
+/** How the review goes to the pull request: left pending, or submitted with a summary the agent's verdict starts. */
+function PostAsChoice({ item, postAs, body, onChoice, onBody }: { item: ReviewItem; postAs: PostAs; body: string; onChoice: (postAs: PostAs) => void; onBody: (body: string) => void }) {
+  const host = useWalkthroughHost();
+  return (
+    <fieldset className="post-as">
+      <legend>Post as</legend>
+      {(Object.keys(postAsLabels) as PostAs[]).map((choice) => (
+        <label key={choice}>
+          <input type="radio" name={`post-as-${item.id}`} checked={postAs === choice} onChange={() => onChoice(choice)} /> {postAsLabels[choice]}
+        </label>
+      ))}
+      {postAs !== "draft" && (
+        <label className="post-body">
+          Summary
+          <textarea
+            {...host.typingAidAttributes}
+            value={body}
+            rows={Math.max(2, body.split("\n").length)}
+            placeholder={postAsNeedsBody(postAs) ? "GitHub needs a summary for this" : "Optional"}
+            onChange={(event) => onBody(event.target.value)}
+            onBlur={() => host.choosePost({ body })}
+          />
+        </label>
+      )}
+    </fieldset>
+  );
+}
 
 function PullRequestLink({ pullRequest }: { pullRequest: PullRequestRef }) {
   return (
@@ -525,16 +565,15 @@ function PostPanel({ item }: { item: ReviewItem }) {
   const { review } = item;
   const gitHubCli = useGitHubCliProblem(item.id, review.pullRequest !== null);
   const host = useWalkthroughHost();
+  const [typedBody, setTypedBody] = useState<string | null>(null);
+  const [chosenPostAs, setChosenPostAs] = useState<PostAs | null>(null);
   if (!review.pullRequest) return null;
-  if (hasNothingToPost(review)) {
-    return (
-      <section className="post-panel">
-        <h3>
-          Pull request <PullRequestLink pullRequest={review.pullRequest} />
-        </h3>
-      </section>
-    );
-  }
+  const postAs = chosenPostAs ?? postAsOf(review);
+  const choosePostAs = (choice: PostAs) => {
+    setChosenPostAs(choice);
+    host.choosePost({ as: choice });
+  };
+  const body = typedBody ?? postBodyOf(review);
   const kept = review.findings.filter((finding) => finding.decision === "keep" && !finding.postedAs);
   const toPost = kept.filter((finding) => isCommentable(fileOf(review, finding.at.path), finding.at));
   const posted = review.findings.filter((finding) => finding.postedAs).length;
@@ -543,15 +582,27 @@ function PostPanel({ item }: { item: ReviewItem }) {
   const answersToPost = answers.filter((answer) => answer.decision === "keep" && !answer.postedAs);
   const postedAnswers = answers.filter((answer) => answer.postedAs).length;
   const resolving = answersToPost.filter((answer) => answer.resolve && !answer.resolved).length;
+  const somethingNew = toPost.length + answersToPost.length > 0;
+  const canPost = somethingNew || (postAs !== "draft" && !review.submittedAs);
+  const needsBody = postAs !== "draft" && postAsNeedsBody(postAs) && !body.trim();
+  const keptGoAs = `Kept findings go to the pull request as comments${answers.length > 0 ? ", and kept answers as replies in their conversations" : ""}`;
   return (
     <section className="post-panel">
       <h3>
         Pull request <PullRequestLink pullRequest={review.pullRequest} />
       </h3>
-      <p>
-        Kept findings go to the pull request as comments on a pending review{answers.length > 0 && ", and kept answers as replies in their conversations"},
-        which only you see until you submit it on GitHub. Dropped ones stay here.
-      </p>
+      <PostAsChoice item={item} postAs={postAs} body={body} onChoice={choosePostAs} onBody={setTypedBody} />
+      {postAs === "draft" ? (
+        <p>
+          {keptGoAs} on a pending review, which only you see until you submit it on GitHub. Dropped ones stay here.
+        </p>
+      ) : review.findings.length + answers.length > 0 ? (
+        <p>
+          {keptGoAs}, and posting submits your review as {submittedAsWords[postAs]}, which everyone sees at once. Dropped ones stay here.
+        </p>
+      ) : (
+        <p>Posting submits your review as {submittedAsWords[postAs]}, which everyone sees at once.</p>
+      )}
       {outside > 0 && (
         <p className="hint">
           {outside === 1 ? "1 kept finding is" : `${outside} kept findings are`} on lines outside the pull request's diff; GitHub takes no
@@ -582,14 +633,37 @@ function PostPanel({ item }: { item: ReviewItem }) {
       )}
       {review.pullRequestMovedOn ? (
         <PullRequestMovedOnNote item={item} pullRequest={review.pullRequest} movedOn={review.pullRequestMovedOn} />
-      ) : toPost.length + answersToPost.length > 0 || review.posting ? (
-        <button type="button" className="primary" disabled={review.posting || gitHubCli.problem !== null} onClick={() => host.post()}>
-          {review.posting ? "Posting…" : `Post ${findingsAndAnswers(toPost.length, answersToPost.length)} to the pull request`}
-        </button>
+      ) : canPost || review.posting ? (
+        <>
+          {needsBody && <p className="hint">{postAsLabels[postAs]} needs a summary on GitHub.</p>}
+          <button
+            type="button"
+            className="primary"
+            disabled={review.posting || gitHubCli.problem !== null || needsBody}
+            onClick={() => host.post({ as: postAs, body })}
+          >
+            {review.posting ? "Posting…" : postButtonLabel(postAs, findingsAndAnswers(toPost.length, answersToPost.length))}
+          </button>
+        </>
       ) : (
         <p className="hint">Nothing new to post: no kept finding{answers.length > 0 && " or answer"} is waiting for it.</p>
       )}
-      {review.pendingReviewUrl && (
+      {review.submitFailure && (
+        <p className="post-failure" role="alert">
+          The review is still pending, not submitted: {review.submitFailure}
+        </p>
+      )}
+      {review.pendingReviewUrl && review.submittedAs && (
+        <p className="posted-note">
+          {posted + postedAnswers > 0
+            ? `${findingsAndAnswers(posted, postedAnswers)} ${posted + postedAnswers === 1 ? "is" : "are"} on your review, submitted as ${submittedAsWords[review.submittedAs]}.`
+            : `Your review is submitted as ${submittedAsWords[review.submittedAs]}.`}{" "}
+          <a href={review.pendingReviewUrl} target="_blank" rel="noreferrer">
+            Open it on GitHub
+          </a>
+        </p>
+      )}
+      {review.pendingReviewUrl && !review.submittedAs && (
         <p className="posted-note">
           {findingsAndAnswers(posted, postedAnswers) || "0 findings"} {posted + postedAnswers === 1 ? "is" : "are"} on your pending review.{" "}
           <a href={review.pendingReviewUrl} target="_blank" rel="noreferrer">
@@ -738,7 +812,7 @@ function Overview({
             </ul>
           </>
         )}
-        <PostPanel item={item} />
+        <PostPanel key={item.id} item={item} />
       </section>
     </div>
   );
@@ -1583,7 +1657,7 @@ function Walkthrough({ item }: { item: WalkthroughItem }) {
                   onAsk={() => setAsking(placeOfFinding(each))}
                 />
               ))}
-              <PostPanel item={reviewItem} />
+              <PostPanel key={reviewItem.id} item={reviewItem} />
             </div>
           )}
           {tab === "conversations" && reviewItem && (
@@ -1591,7 +1665,7 @@ function Walkthrough({ item }: { item: WalkthroughItem }) {
               {answers.map((each) => (
                 <AnswerCard key={each.id} item={reviewItem} answer={each} selected={each.id === answerId} />
               ))}
-              <PostPanel item={reviewItem} />
+              <PostPanel key={reviewItem.id} item={reviewItem} />
             </div>
           )}
         </div>

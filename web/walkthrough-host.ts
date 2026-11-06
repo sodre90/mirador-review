@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { FindingDecision, GitHubCliProblem } from "../shared/review.ts";
+import type { FindingDecision, GitHubCliProblem, PostAs } from "../shared/review.ts";
 import type { PlaceInWalkthrough } from "../shared/walkthrough-actions.ts";
 
 /** The review's list as a part of its width, and the Flow tab's steps as a part of its height, with their setters. */
@@ -20,7 +20,9 @@ export interface WalkthroughHost {
   openInLabel: string;
   updateFinding(findingId: string, change: { decision?: FindingDecision; body?: string }): void;
   updateAnswer(answerId: string, change: { decision?: FindingDecision; body?: string; resolve?: boolean }): void;
-  post(): void;
+  /** Keeps how the user chose to post the review, and the summary of a submitted one, as they change them. */
+  choosePost(change: { as?: PostAs; body?: string }): void;
+  post(choice: { as: PostAs; body: string }): void;
   reviewAgain(): void;
   /** The reviewed or toured version of a file, line by line. */
   readFile(path: string): Promise<string[]>;

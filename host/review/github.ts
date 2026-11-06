@@ -1,6 +1,6 @@
 import { delimiter } from "node:path";
 import { currentPath } from "../current-path.ts";
-import { answersOf, isCommentable, pendingReviewOfOtherCommitNote, pullRequestMovedOnNote, type ConversationComment, type GitHubCliProblem, type PullRequestRef, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
+import { answersOf, isCommentable, pendingReviewOfOtherCommitNote, pullRequestMovedOnNote, type ConversationComment, type GitHubCliProblem, type PostAs, type PullRequestRef, type Review, type ReviewAnswer, type ReviewFinding, type SubmittedAs } from "../../shared/review.ts";
 
 const PULL_REQUEST_URL = /^https:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#]\S*)?$/;
 
@@ -47,6 +47,7 @@ export async function gitHubCliProblemOn(host: string, searchPath = ghSearchPath
 const ADD_REVIEW = `mutation($input: AddPullRequestReviewInput!) { addPullRequestReview(input: $input) { pullRequestReview { id url } } }`;
 const ADD_THREAD = `mutation($input: AddPullRequestReviewThreadInput!) { addPullRequestReviewThread(input: $input) { thread { id } } }`;
 const ADD_REPLY = `mutation($input: AddPullRequestReviewThreadReplyInput!) { addPullRequestReviewThreadReply(input: $input) { comment { url } } }`;
+const SUBMIT_REVIEW = `mutation($input: SubmitPullRequestReviewInput!) { submitPullRequestReview(input: $input) { pullRequestReview { url } } }`;
 const RESOLVE_THREAD = `mutation($input: ResolveReviewThreadInput!) { resolveReviewThread(input: $input) { thread { isResolved } } }`;
 const PENDING_REVIEW = `query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviews(states: PENDING, first: 1) { nodes { id url commit { oid } } } } }
@@ -99,7 +100,10 @@ export interface PullRequestConversation extends Pick<ReviewAnswer, "threadId" |
 }
 
 export interface PostOutcome {
-  pendingReviewUrl: string;
+  reviewUrl: string;
+  /** Missing when the review was left pending, as asked or because it could not be submitted. */
+  submittedAs?: SubmittedAs;
+  submitFailure?: string;
   threadIds: Map<string, string>;
   answerUrls: Map<string, string>;
   resolvedAnswerIds: Set<string>;
@@ -181,13 +185,15 @@ export class PendingReviewOfOtherCommit extends Error {
   }
 }
 
+const SUBMIT_EVENTS: Record<SubmittedAs, string> = { comment: "COMMENT", approve: "APPROVE", "request-changes": "REQUEST_CHANGES" };
+
 /**
  * Adds the findings, and the answers as replies, to the user's pending review on the pull request, starting one if they
- * have none, and leaves it pending: the user reads it on GitHub and submits it. Conversations the user chose to resolve
- * are resolved right away, which everyone sees. Each comment goes on its own, so one GitHub refuses does not stop the
- * others.
+ * have none, and leaves it pending for the user to submit on GitHub, or submits it as they chose. Conversations the user
+ * chose to resolve are resolved right away, which everyone sees. Each comment goes on its own, so one GitHub refuses
+ * does not stop the others; but then the review stays pending, since a submitted review can't take that comment later.
  */
-export async function postPendingReview(review: Review, gh: GitHubCli): Promise<PostOutcome> {
+export async function postReview(review: Review, gh: GitHubCli, postAs: PostAs = "draft", body = ""): Promise<PostOutcome> {
   const pr = review.pullRequest;
   if (!pr) throw new Error("This review is not of a pull request.");
   const rest = (path: string) => gh(["api", "--hostname", pr.host, `repos/${pr.owner}/${pr.repo}/pulls/${pr.number}${path}`]);
@@ -206,7 +212,7 @@ export async function postPendingReview(review: Review, gh: GitHubCli): Promise<
     ((await graphql(ADD_REVIEW, { pullRequestId: pullRequest.node_id, commitOID: review.headCommit })) as { addPullRequestReview: { pullRequestReview: { id: string; url: string } } })
         .addPullRequestReview.pullRequestReview;
 
-  const outcome: PostOutcome = { pendingReviewUrl: pendingReview.url, threadIds: new Map(), answerUrls: new Map(), resolvedAnswerIds: new Set(), errors: new Map() };
+  const outcome: PostOutcome = { reviewUrl: pendingReview.url, threadIds: new Map(), answerUrls: new Map(), resolvedAnswerIds: new Set(), errors: new Map() };
   for (const finding of findingsToPost(review)) {
     try {
       const data = (await graphql(ADD_THREAD, threadInput(pendingReview.id, finding))) as { addPullRequestReviewThread: { thread: { id: string } } };
@@ -232,7 +238,25 @@ export async function postPendingReview(review: Review, gh: GitHubCli): Promise<
       outcome.errors.set(answer.id, `The answer is on your pending review, but the conversation was not resolved: ${errorText(error)}`);
     }
   }
+  if (postAs !== "draft") await submit(pendingReview.id, postAs, body, outcome, graphql);
   return outcome;
+}
+
+async function submit(reviewId: string, submitAs: SubmittedAs, body: string, outcome: PostOutcome, graphql: (query: string, input: object) => Promise<Record<string, unknown>>) {
+  const notPosted = [...outcome.errors.keys()].filter((id) => !outcome.answerUrls.has(id));
+  if (notPosted.length > 0) {
+    outcome.submitFailure = "Some comments didn't go, so the review stays pending: fix or drop them and post again, or submit it on GitHub.";
+    return;
+  }
+  try {
+    const data = (await graphql(SUBMIT_REVIEW, { pullRequestReviewId: reviewId, event: SUBMIT_EVENTS[submitAs], ...(body.trim() && { body: body.trim() }) })) as {
+      submitPullRequestReview: { pullRequestReview: { url: string } };
+    };
+    outcome.reviewUrl = data.submitPullRequestReview.pullRequestReview.url;
+    outcome.submittedAs = submitAs;
+  } catch (error) {
+    outcome.submitFailure = errorText(error);
+  }
 }
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));

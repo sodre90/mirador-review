@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Review, ReviewAnswer } from "../shared/review.ts";
 import { answersToConversations } from "../host/review/answers.ts";
 import { carryOverAnswerChoices } from "../host/review/carry-over.ts";
-import { conversationNamed, fetchConversations, parsePullRequestUrl, postPendingReview, type GitHubCli } from "../host/review/github.ts";
+import { conversationNamed, fetchConversations, parsePullRequestUrl, postReview, type GitHubCli } from "../host/review/github.ts";
 import { allOrEveryProblem, ReviewProblems, type ReviewRequest } from "../host/review/snapshot.ts";
 
 const PULL_REQUEST = "https://ghe.example.com/team/repo/pull/5";
@@ -161,6 +161,7 @@ describe("posting answers", () => {
       if (name === "addPullRequestReviewThreadReply" && threadId === refuse.reply) return { errors: [{ message: "Thread is locked" }] };
       if (name === "resolveReviewThread" && threadId === refuse.resolve) return { errors: [{ message: "Not allowed" }] };
       if (name === "resolveReviewThread") return { data: { resolveReviewThread: { thread: { isResolved: true } } } };
+      if (name === "submitPullRequestReview") return { data: { submitPullRequestReview: { pullRequestReview: { url: "https://ghe.example.com/review/mine#submitted" } } } };
       return { data: { addPullRequestReviewThreadReply: { comment: { url: `${PULL_REQUEST}#discussion_r-${threadId}` } } } };
     };
     return { gh, mutations };
@@ -174,7 +175,7 @@ describe("posting answers", () => {
       answer("three", { postedAs: { url: "posted" } }),
       answer("four", { resolve: true, resolved: true }),
     ]);
-    const outcome = await postPendingReview(review, gh);
+    const outcome = await postReview(review, gh);
     expect(mutations).toEqual([
       { name: "addPullRequestReviewThreadReply", input: { pullRequestReviewId: "PRR_mine", pullRequestReviewThreadId: "PRRT_one", body: "Reply one" } },
       { name: "resolveReviewThread", input: { threadId: "PRRT_one" } },
@@ -186,11 +187,19 @@ describe("posting answers", () => {
 
   test("leaves a conversation open when GitHub refuses its reply, and says so when only the resolving failed", async () => {
     const { gh, mutations } = fakeGitHub({ reply: "PRRT_one", resolve: "PRRT_two" });
-    const outcome = await postPendingReview(reviewWith([answer("one", { resolve: true }), answer("two", { resolve: true })]), gh);
+    const outcome = await postReview(reviewWith([answer("one", { resolve: true }), answer("two", { resolve: true })]), gh);
     expect(mutations.map(({ name }) => name)).toEqual(["addPullRequestReviewThreadReply", "addPullRequestReviewThreadReply", "resolveReviewThread"]);
     expect(outcome.errors.get("one")).toBe("Thread is locked");
     expect(outcome.answerUrls.has("two")).toBe(true);
     expect(outcome.errors.get("two")).toBe("The answer is on your pending review, but the conversation was not resolved: Not allowed");
+  });
+
+  test("submits the review when every reply went, even one whose conversation could not be resolved", async () => {
+    const { gh, mutations } = fakeGitHub({ resolve: "PRRT_one" });
+    const outcome = await postReview(reviewWith([answer("one", { resolve: true })]), gh, "comment", "Answered.");
+    expect(mutations.at(-1)).toEqual({ name: "submitPullRequestReview", input: { pullRequestReviewId: "PRR_mine", event: "COMMENT", body: "Answered." } });
+    expect(outcome.submittedAs).toBe("comment");
+    expect(outcome.submitFailure).toBeUndefined();
   });
 
   test("published again, an answer to the same conversation keeps what the user did with it, unless the agent stopped suggesting to resolve it", () => {

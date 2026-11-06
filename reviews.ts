@@ -1,11 +1,11 @@
 import * as z from "zod/v4";
 import type { CanvasActionContext, CanvasPluginContext, CanvasTool, PluginItem, PluginItemType } from "./mirador/api.ts";
-import { anchorLabel, answersOf, findingSeverities, isCommentable, verdictInBrief, type Review, type ReviewAnswer, type ReviewFinding } from "./shared/review.ts";
+import { anchorLabel, answersOf, findingSeverities, isCommentable, postBodyOf, verdictInBrief, verdictReason, type PostAs, type Review, type ReviewAnswer, type ReviewFinding } from "./shared/review.ts";
 import type { WalkthroughAction } from "./shared/walkthrough-actions.ts";
 import { answersToConversations } from "./host/review/answers.ts";
 import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "./host/review/carry-over.ts";
 import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "./host/review/edit.ts";
-import { gitHubCliProblemOn, PendingReviewOfOtherCommit, postPendingReview, PullRequestMovedOn, type GitHubCli } from "./host/review/github.ts";
+import { gitHubCliProblemOn, PendingReviewOfOtherCommit, postReview, PullRequestMovedOn, type GitHubCli } from "./host/review/github.ts";
 import { allOrEveryProblem, ReviewProblems, snapshotReview, type ReviewRequest } from "./host/review/snapshot.ts";
 
 const anchorSchema = (what: string) =>
@@ -46,7 +46,7 @@ const reviewSchema = z.object({
     .string()
     .optional()
     .describe("The pull request's URL, when reviewing one. The user can then post the findings they keep to it as a pending review."),
-  verdict: z.string().min(1).describe("One sentence: approve, approve with nits, or request changes, and the main reason."),
+  verdict: z.string().min(1).describe("One sentence: approve, approve with nits, or request changes, and the main reason, as in \"Request changes: the fallback skips auth.\" The reason after the colon is what the user posts to the pull request's author as the review's summary, so it must stand on its own."),
   summary: z
     .string()
     .min(1)
@@ -205,7 +205,7 @@ function changeReview(context: ReviewContext, itemId: string, change: Partial<Re
   return context.change(itemId, { data: { ...data, ...change } });
 }
 
-export const reviewActionKinds = ["update-finding", "update-answer", "check-github-cli", "post", "review-again"] as const;
+export const reviewActionKinds = ["update-finding", "update-answer", "check-github-cli", "choose-post", "post", "review-again"] as const;
 
 export type ReviewAction = Extract<WalkthroughAction, { kind: (typeof reviewActionKinds)[number] }>;
 
@@ -238,6 +238,24 @@ function updateAnswer(context: ReviewContext, { id, data: review }: PluginItem<R
   changeReview(context, id, { answers: answersOf(review).map((each) => (each.id === answerId ? changed : each)) });
 }
 
+type PostChoice = Pick<Extract<ReviewAction, { kind: "post" }>, "as" | "body">;
+
+const POST_AS: readonly PostAs[] = ["draft", "comment", "approve", "request-changes"];
+
+function checkedPostChoice({ as: postAs, body }: PostChoice): PostChoice {
+  if (postAs !== undefined && !POST_AS.includes(postAs)) throw new Error(`"${postAs}" is not a way to post a review.`);
+  return { as: postAs, body };
+}
+
+/** Keeps how the user chose to post, for every page showing the review; a summary that is the verdict's reason again follows the verdict. */
+function choosePost(context: ReviewContext, itemId: string, { as: postAs, body }: PostChoice) {
+  const { verdict } = reviewNamed(context, itemId).data;
+  changeReview(context, itemId, {
+    ...(postAs && { postAs }),
+    ...(body !== undefined && { postBody: body === verdictReason(verdict) ? undefined : body }),
+  });
+}
+
 /** The review says so where Post was, for every page showing it; a head it already knew of keeps whether the agent was asked. */
 function notePullRequestMovedOn(context: ReviewContext, itemId: string, headCommit: string) {
   if (reviewNamed(context, itemId).data.pullRequestMovedOn?.headCommit === headCommit) return;
@@ -264,12 +282,15 @@ async function reviewAgain(context: CanvasActionContext<Review>, { id, data: rev
 export function codeReviews(gh: GitHubCli) {
   const beingPosted = new Set<string>();
 
-  /** Adds the kept findings and answers to the user's pending review on the pull request; each records how that went. */
-  async function post(context: ReviewContext, itemId: string) {
+  /**
+   * Adds the kept findings and answers to the user's pending review on the pull request, and submits it if they chose to;
+   * each records how that went.
+   */
+  async function post(context: ReviewContext, itemId: string, postAs: PostAs, body: string) {
     beingPosted.add(itemId);
     try {
-      const { data: review } = changeReview(context, itemId, { posting: true, postFailure: undefined });
-      const outcome = await postPendingReview(review, gh);
+      const { data: review } = changeReview(context, itemId, { posting: true, postFailure: undefined, submitFailure: undefined });
+      const outcome = await postReview(review, gh, postAs, body);
       const latest = reviewNamed(context, itemId).data;
       const findings = latest.findings.map((finding) => {
         const threadId = outcome.threadIds.get(finding.id);
@@ -286,7 +307,9 @@ export function codeReviews(gh: GitHubCli) {
       changeReview(context, itemId, {
         findings,
         answers,
-        pendingReviewUrl: outcome.pendingReviewUrl,
+        pendingReviewUrl: outcome.reviewUrl,
+        submittedAs: outcome.submittedAs,
+        submitFailure: outcome.submitFailure,
         pullRequestMovedOn: undefined,
         pendingReviewOfOtherCommit: undefined,
       });
@@ -304,10 +327,11 @@ export function codeReviews(gh: GitHubCli) {
    * Answers the view once posting starts, however long GitHub takes; every page showing the review follows the post
    * through the review's own changes, a failure included.
    */
-  function startPosting(context: ReviewContext, itemId: string) {
-    reviewNamed(context, itemId);
+  function startPosting(context: ReviewContext, itemId: string, { as: postAs, body }: PostChoice) {
+    const review = reviewNamed(context, itemId).data;
     if (beingPosted.has(itemId)) return;
-    void post(context, itemId).catch((error) => console.error(`${new Date().toISOString()} posting review ${itemId} failed:`, error));
+    if (postAs) choosePost(context, itemId, { as: postAs, body });
+    void post(context, itemId, postAs ?? "draft", body ?? postBodyOf(review)).catch((error) => console.error(`${new Date().toISOString()} posting review ${itemId} failed:`, error));
   }
 
   const reviewType: PluginItemType<Review> = {
@@ -336,6 +360,8 @@ export function codeReviews(gh: GitHubCli) {
             ...snapshot,
             findings: carryOverChoices(earlier.findings, snapshot.findings, ofSamePullRequest(earlier, snapshot)),
             answers: carryOverAnswerChoices(answersOf(earlier), answers),
+            postAs: earlier.postAs,
+            postBody: earlier.postBody,
           }
         : { ...snapshot, answers };
       const { id } = context.publish({ type: "review", title: request.title, data: review });
@@ -372,8 +398,10 @@ export function codeReviews(gh: GitHubCli) {
       }
       case "check-github-cli":
         return item.data.pullRequest ? gitHubCliProblemOn(item.data.pullRequest.host).catch(() => null) : null;
+      case "choose-post":
+        return choosePost(context, item.id, checkedPostChoice(action));
       case "post":
-        return startPosting(context, item.id);
+        return startPosting(context, item.id, checkedPostChoice(action));
       case "review-again":
         return reviewAgain(context, item);
     }
