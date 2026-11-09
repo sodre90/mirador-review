@@ -413,6 +413,16 @@ describe("the review plugin: reviews", () => {
       expect(reviewOf(items().at(-1)!)).toMatchObject({ postAs: "comment", postBody: "Mine." });
     });
 
+    test("a review published again after the user submitted the earlier one is posted as its own verdict suggests, with its reason as the summary", async () => {
+      const { pullRequest, headCommit, review, post, callTool, items } = await reviewOfPullRequest();
+      pullRequest.head = headCommit;
+      await post({ as: "request-changes", body: "Load fails on empty input." });
+      await callTool("review", reviewRequest(review().repository, { pullRequest: "https://github.com/team/shop/pull/7", verdict: "Approve: load handles empty input now." }));
+      const nextRound = reviewOf(items().at(-1)!)!;
+      expect(postAsOf(nextRound)).toBe("approve");
+      expect(postBodyOf(nextRound)).toBe("load handles empty input now.");
+    });
+
     test("a summary the user sets back to the verdict's reason follows the verdict again; a way to post Mirador doesn't know is refused", async () => {
       const { review, act } = await reviewOfPullRequest();
       await act({ kind: "choose-post", body: "Mine." });

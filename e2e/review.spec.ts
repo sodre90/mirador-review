@@ -757,7 +757,7 @@ test("a post that fails as a whole says why above Post on every page showing the
   await otherPage.close();
 });
 
-test("Approve submits the review with its comments; a refusal keeps them posted and the review pending, and Comment then submits it with the user's summary", async ({ page }) => {
+test("Approve submits the review with its comments; a refusal keeps them posted and the review pending, Comment then submits it with the user's summary, and the next round's verdict picks how to post again", async ({ page }) => {
   rmSync(ghLoggedOut, { force: true });
   await signIn(page, host);
   const addProject = page.getByRole("button", { name: "+ Add a project directory" });
@@ -803,6 +803,10 @@ test("Approve submits the review with its comments; a refusal keeps them posted 
     { pullRequestReviewId: "PRR_1", event: "APPROVE", body: "two small questions." },
     { pullRequestReviewId: "PRR_1", event: "COMMENT", body: "Two questions on the fallback." },
   ]);
+
+  await callCanvasTool(host, conversationId, "review", review({ verdict: "Approve: both questions are answered." }));
+  await expect(postPanel.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(summary).toHaveValue("both questions are answered.");
 });
 
 test("a review with nothing to comment on says so on its Findings tab, links its pull request there and in the Overview, and approves it with no comments", async ({ page }) => {

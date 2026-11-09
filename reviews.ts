@@ -3,7 +3,7 @@ import type { CanvasActionContext, CanvasPluginContext, CanvasTool, PluginItem, 
 import { anchorLabel, answersOf, findingSeverities, isCommentable, postBodyOf, verdictInBrief, verdictReason, type PostAs, type Review, type ReviewAnswer, type ReviewFinding } from "./shared/review.ts";
 import type { WalkthroughAction } from "./shared/walkthrough-actions.ts";
 import { answersToConversations } from "./host/review/answers.ts";
-import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "./host/review/carry-over.ts";
+import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, postChoiceToCarryOver, reviewToCarryOverFrom } from "./host/review/carry-over.ts";
 import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "./host/review/edit.ts";
 import { gitHubCliProblemOn, PendingReviewOfOtherCommit, postReview, PullRequestMovedOn, type GitHubCli } from "./host/review/github.ts";
 import { allOrEveryProblem, ReviewProblems, snapshotReview, type ReviewRequest } from "./host/review/snapshot.ts";
@@ -360,8 +360,7 @@ export function codeReviews(gh: GitHubCli) {
             ...snapshot,
             findings: carryOverChoices(earlier.findings, snapshot.findings, ofSamePullRequest(earlier, snapshot)),
             answers: carryOverAnswerChoices(answersOf(earlier), answers),
-            postAs: earlier.postAs,
-            postBody: earlier.postBody,
+            ...postChoiceToCarryOver(earlier),
           }
         : { ...snapshot, answers };
       const { id } = context.publish({ type: "review", title: request.title, data: review });

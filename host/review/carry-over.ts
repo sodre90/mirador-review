@@ -56,6 +56,9 @@ export function carryOverAnswerChoices(earlier: ReviewAnswer[], answers: ReviewA
   });
 }
 
+/** How the user chose to post goes on with the pending review it is for; once that was submitted, the next round's verdict suggests anew. */
+export const postChoiceToCarryOver = ({ postAs, postBody, submittedAs }: Review): Pick<Review, "postAs" | "postBody"> => (submittedAs ? {} : { postAs, postBody });
+
 /** The user's Resolve when posted stays while the agent's suggestion does; a changed suggestion sets the box again. */
 export function resolveChoice(earlier: ReviewAnswer, suggestsResolving: boolean): boolean {
   return suggestsResolving === earlier.suggestsResolving ? earlier.resolve : suggestsResolving && earlier.canResolve;
